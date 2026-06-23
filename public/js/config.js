@@ -52,7 +52,9 @@ const CONFIG = {
 
     // 消息配置
     MESSAGE: {
-        DEVICE_INFO_ENABLED: false
+        DEVICE_INFO_ENABLED: false,
+        GROUP_WINDOW_MINUTES: 15,
+        DEVICE_COLOR_COUNT: 8
     },
 
     // 时区配置
@@ -342,6 +344,9 @@ async function loadRuntimeConfig() {
         }
         if (message) {
             CONFIG.MESSAGE.DEVICE_INFO_ENABLED = !!message.deviceInfoEnabled;
+            CONFIG.MESSAGE.GROUP_WINDOW_MINUTES = Number.isFinite(Number(message.groupWindowMinutes))
+                ? Number(message.groupWindowMinutes)
+                : CONFIG.MESSAGE.GROUP_WINDOW_MINUTES;
         }
         if (timezone) {
             CONFIG.TIMEZONE.SERVER = timezone.serverTimezone || CONFIG.TIMEZONE.SERVER;

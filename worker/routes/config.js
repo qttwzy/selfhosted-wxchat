@@ -8,6 +8,11 @@ function readBool(value, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase())
 }
 
+function readInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 function getRuntimeTimezone(env) {
   const fallback = 'UTC'
   const timezone = env.APP_TIMEZONE || env.SERVER_TIMEZONE || fallback
@@ -46,6 +51,7 @@ config.get('/', (c) => {
       },
       message: {
         deviceInfoEnabled: readBool(c.env.MESSAGE_DEVICE_INFO_ENABLED, false),
+        groupWindowMinutes: readInt(c.env.MESSAGE_GROUP_WINDOW_MINUTES, 15),
       },
       timezone: {
         serverTimezone,

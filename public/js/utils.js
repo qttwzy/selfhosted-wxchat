@@ -167,6 +167,16 @@ const Utils = {
             minute: '2-digit'
         });
     },
+
+    getDeviceColorIndex(deviceId) {
+        const value = String(deviceId || 'unknown-device');
+        let hash = 0;
+        for (let i = 0; i < value.length; i++) {
+            hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+        }
+        const colorCount = Math.max(1, Number(CONFIG.MESSAGE?.DEVICE_COLOR_COUNT) || 8);
+        return Math.abs(hash) % colorCount + 1;
+    },
     
     // 获取文件图标 - 支持MIME类型和文件扩展名
     getFileIcon(mimeType, fileName = null) {
