@@ -11,6 +11,7 @@ class RealtimeManager {
         this.listeners = new Map();
         this.longPollingActive = false;
         this.longPollingTimeout = null;
+        this.reconnectTimer = null;
         this._destroyed = false;
     }
 
@@ -18,7 +19,16 @@ class RealtimeManager {
     init(deviceId) {
         this.deviceId = deviceId;
         this._destroyed = false;
+        this.reconnectAttempts = 0;
+        this.clearReconnectTimer();
         this.connect();
+    }
+
+    clearReconnectTimer() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
     }
 
     // 建立SSE连接
@@ -27,7 +37,7 @@ class RealtimeManager {
         if (this.eventSource) {
             const readyState = this.eventSource.readyState;
             if (readyState === EventSource.OPEN || readyState === EventSource.CONNECTING) {
-                this.disconnect();
+                this.disconnect({ emit: false });
             }
         }
 
@@ -36,7 +46,7 @@ class RealtimeManager {
 
         try {
             const token = Auth && Auth.getToken() ? Auth.getToken() : '';
-            const url = `/api/events?deviceId=${encodeURIComponent(this.deviceId)}&token=${encodeURIComponent(token)}`;
+            const url = `/api/events?deviceId=${encodeURIComponent(this.deviceId)}&token=${encodeURIComponent(token)}&scope=all`;
             this.eventSource = new EventSource(url);
 
             this.eventSource.addEventListener('connection', (event) => {
@@ -87,14 +97,18 @@ class RealtimeManager {
     }
 
     // 断开连接
-    disconnect() {
+    disconnect(options = {}) {
+        const shouldEmit = options.emit !== false;
+        this.clearReconnectTimer();
         if (this.eventSource) {
             this.eventSource.close();
             this.eventSource = null;
         }
         this.stopLongPolling();
         this.isConnected = false;
-        this.emit('disconnected');
+        if (shouldEmit) {
+            this.emit('disconnected');
+        }
     }
 
     // 处理重连逻辑
@@ -111,7 +125,9 @@ class RealtimeManager {
 
         UI.setConnectionStatus('reconnecting');
 
-        setTimeout(() => {
+        this.clearReconnectTimer();
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
             if (!this.isConnected && !this._destroyed) {
                 this.connect();
             }
@@ -146,7 +162,7 @@ class RealtimeManager {
 
         try {
             const lastMessageId = this.getLastMessageId();
-            const url = `/api/poll?deviceId=${encodeURIComponent(this.deviceId)}&lastMessageId=${lastMessageId}&timeout=25`;
+            const url = `/api/poll?deviceId=${encodeURIComponent(this.deviceId)}&lastMessageId=${lastMessageId}&timeout=25&scope=all`;
 
             const headers = Auth ? Auth.addAuthHeader({}) : {};
             const response = await fetch(url, { headers });

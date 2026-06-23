@@ -10,6 +10,8 @@ const MessageHandler = {
     // 加载状态（防止重复请求）
     isLoading: false,
     isLoadingMore: false,
+    loadRequestId: 0,
+    workspaceResetId: 0,
 
     // 分页状态
     hasMoreMessages: true,
@@ -85,9 +87,17 @@ const MessageHandler = {
     async loadMessages(forceScroll = false) {
         if (this.isLoading) return;
         this.isLoading = true;
+        const requestId = ++this.loadRequestId;
+        const workspaceId = typeof API !== 'undefined' && API.getWorkspaceId
+            ? API.getWorkspaceId()
+            : null;
 
         try {
-            const messages = await API.getMessages();
+            const messages = await API.getMessages(CONFIG.UI.MESSAGE_LOAD_LIMIT, 0, workspaceId);
+
+            if (requestId !== this.loadRequestId || (workspaceId && API.getWorkspaceId && workspaceId !== API.getWorkspaceId())) {
+                return;
+            }
 
             const hasChanges = this.detectMessageChanges(messages);
             const isFirstLoad = this.lastMessages.length === 0;
@@ -102,6 +112,9 @@ const MessageHandler = {
                 this.updateInfiniteScrollState();
             }
         } catch (error) {
+            if (requestId !== this.loadRequestId) {
+                return;
+            }
             console.error('[MessageHandler] 加载消息失败:', error);
             if (this.lastMessages.length === 0) {
                 UI.showEmpty('还没有消息，开始聊天吧！');
@@ -109,7 +122,9 @@ const MessageHandler = {
                 UI.showError(error.message || CONFIG.ERRORS.LOAD_MESSAGES_FAILED);
             }
         } finally {
-            this.isLoading = false;
+            if (requestId === this.loadRequestId) {
+                this.isLoading = false;
+            }
         }
     },
 
@@ -161,11 +176,19 @@ const MessageHandler = {
             const scrollContainer = UI.getMessageContainer();
             const oldScrollHeight = scrollContainer.scrollHeight;
             const oldScrollTop = scrollContainer.scrollTop;
+            const workspaceId = typeof API !== 'undefined' && API.getWorkspaceId
+                ? API.getWorkspaceId()
+                : null;
 
             const moreMessages = await API.getMessages(
                 CONFIG.UI.LOAD_MORE_BATCH_SIZE,
-                this.totalLoadedMessages
+                this.totalLoadedMessages,
+                workspaceId
             );
+
+            if (workspaceId && API.getWorkspaceId && workspaceId !== API.getWorkspaceId()) {
+                return;
+            }
 
             if (moreMessages && moreMessages.length > 0) {
                 const allMessages = [...moreMessages, ...this.lastMessages];
@@ -367,6 +390,33 @@ const MessageHandler = {
         }
     },
 
+    // 切换工作区时重置本地消息状态
+    async resetForWorkspace() {
+        const resetId = ++this.workspaceResetId;
+        this.stopAutoRefresh();
+        this.lastMessages = [];
+        this.isLoading = false;
+        this.isLoadingMore = false;
+        this.hasMoreMessages = true;
+        this.totalLoadedMessages = 0;
+        UI.messageCache.clear();
+        UI.showLoading('加载工作区...');
+
+        await this.loadMessages(true);
+
+        if (resetId !== this.workspaceResetId) return;
+
+        this.syncDevice();
+
+        if (window.Realtime && !Realtime.isConnectionAlive()) {
+            setTimeout(() => {
+                if (resetId === this.workspaceResetId) {
+                    Realtime.init(Utils.getDeviceId());
+                }
+            }, 0);
+        }
+    },
+
     // 检查是否为清理指令
     isClearCommand(content) {
         const trimmed = content.trim().toLowerCase();
@@ -375,7 +425,17 @@ const MessageHandler = {
 
     // 处理清理指令
     async handleClearCommand() {
-        const confirmCode = prompt('请输入确认码 1234 以清空所有数据：');
+        const confirmCode = await Utils.showInputDialog({
+            title: '清空当前工作区',
+            message: CONFIG.CLEAR.CONFIRM_MESSAGE,
+            placeholder: CONFIG.CLEAR.CONFIRM_CODE,
+            defaultValue: '',
+            confirmText: '清空',
+            cancelText: '取消',
+            inputType: 'text',
+            helperText: '请输入确认码后继续。',
+            validate: (value) => value.length > 0 || '请输入确认码',
+        });
         if (!confirmCode) return;
 
         try {

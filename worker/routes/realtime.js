@@ -1,5 +1,6 @@
 ﻿import { Hono } from 'hono'
 import { MessageService } from '../services/messageService.js'
+import { WorkspaceService } from '../services/workspaceService.js'
 
 const realtime = new Hono()
 
@@ -11,6 +12,8 @@ realtime.get('/events', async (c) => {
   }
 
   try {
+    const scope = c.req.query('scope')
+    const workspaceId = scope === 'all' ? null : await WorkspaceService.resolveRequestWorkspaceId(c)
     const headers = new Headers({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -23,33 +26,53 @@ realtime.get('/events', async (c) => {
     const writer = writable.getWriter()
     const encoder = new TextEncoder()
     let isClosed = false
+    let heartbeatTimer = null
+    let messageCheckTimer = null
+    let timeout = null
+
+    const cleanup = () => {
+      if (isClosed) return
+      isClosed = true
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
+      if (messageCheckTimer) clearInterval(messageCheckTimer)
+      if (timeout) clearTimeout(timeout)
+      try {
+        const closePromise = writer.close()
+        if (closePromise && typeof closePromise.catch === 'function') {
+          closePromise.catch(() => {})
+        }
+      } catch (e) { /* 忽略 */ }
+    }
 
     const sendSSE = (data, event = 'message') => {
       if (isClosed) return
       try {
         const message = `event: ${event}\ndata: ${data}\n\n`
-        writer.write(encoder.encode(message))
+        const writePromise = writer.write(encoder.encode(message))
+        if (writePromise && typeof writePromise.catch === 'function') {
+          writePromise.catch(() => cleanup())
+        }
       } catch (error) {
-        // 流已关闭，忽略
+        cleanup()
       }
     }
 
     // 发送连接确认
-    sendSSE(JSON.stringify({ status: 'connected', deviceId }), 'connection')
+    sendSSE(JSON.stringify({ status: 'connected', deviceId, workspaceId: workspaceId || 'all' }), 'connection')
 
     // 心跳检测（每30秒）
-    const heartbeatTimer = setInterval(() => {
+    heartbeatTimer = setInterval(() => {
       sendSSE('ping', 'heartbeat')
     }, 30000)
 
     // 轮询新消息（每3秒，比之前5秒更灵敏）
-    const messageCheckTimer = setInterval(async () => {
+    messageCheckTimer = setInterval(async () => {
       if (isClosed) return
       try {
         const { DB } = c.env
         if (!DB) return
 
-        const count = await MessageService.getRecentMessageCount(DB, 5)
+        const count = await MessageService.getRecentMessageCount(DB, 5, workspaceId)
         if (count > 0) {
           sendSSE(JSON.stringify({ newMessages: count }), 'message')
         }
@@ -58,17 +81,8 @@ realtime.get('/events', async (c) => {
       }
     }, 3000)
 
-    // 流关闭清理
-    const cleanup = () => {
-      if (isClosed) return
-      isClosed = true
-      clearInterval(heartbeatTimer)
-      clearInterval(messageCheckTimer)
-      try { writer.close() } catch (e) { /* 忽略 */ }
-    }
-
     // Worker 最长执行 30 秒，设置 25 秒超时提前关闭
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       sendSSE(JSON.stringify({ reason: 'timeout', reconnect: true }), 'timeout')
       cleanup()
     }, 25000)
@@ -97,6 +111,8 @@ realtime.get('/poll', async (c) => {
     const { DB } = c.env
     const deviceId = c.req.query('deviceId')
     const lastMessageId = c.req.query('lastMessageId') || '0'
+    const scope = c.req.query('scope')
+    const workspaceId = scope === 'all' ? null : await WorkspaceService.resolveRequestWorkspaceId(c)
     const timeout = Math.min(
       parseInt(c.req.query('timeout') || '30'),
       25 // 最长25秒，适配Worker限制
@@ -113,7 +129,7 @@ realtime.get('/poll', async (c) => {
     const maxWaitTime = timeout * 1000
 
     while (Date.now() - startTime < maxWaitTime) {
-      const count = await MessageService.getNewMessageCount(DB, lastMessageId)
+      const count = await MessageService.getNewMessageCount(DB, lastMessageId, workspaceId)
 
       if (count > 0) {
         return c.json({
