@@ -2,6 +2,9 @@
 // 提供Web端适用的功能选项界面框架
 
 const FunctionMenu = {
+    STYLE_VERSION: '2.2.4',
+    timeZoneOptions: [],
+
     // 菜单配置 - 微信风格
     menuItems: [
         {
@@ -95,8 +98,26 @@ const FunctionMenu = {
 
         this.createMenuElement();
         this.createEmojiPickerElement();
+        this.ensureModalStyles();
         this.bindEvents();
         this.isInitialized = true;
+    },
+
+    // 确保新版弹层样式已加载，绕过旧 Service Worker 对裸 CSS 路径的缓存
+    ensureModalStyles() {
+        const versionedHref = `./css/modals.css?v=${this.STYLE_VERSION}`;
+        const hasVersionedStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+            .some(link => link.href.includes(`/css/modals.css?v=${this.STYLE_VERSION}`));
+
+        if (hasVersionedStyles) {
+            return;
+        }
+
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = versionedHref;
+        link.dataset.wxchatModalStyles = this.STYLE_VERSION;
+        document.head.appendChild(link);
     },
 
     // 创建菜单DOM元素
@@ -506,9 +527,12 @@ const FunctionMenu = {
         const dialog = document.getElementById('timezoneDialog');
         if (!dialog) return;
 
-        const mode = CONFIG.TIMEZONE.MODE || 'server';
-        const customValue = CONFIG.TIMEZONE.CUSTOM || CONFIG.TIMEZONE.ACTIVE || CONFIG.TIMEZONE.DEFAULT || 'UTC';
+        Utils.applyTimeZonePreference();
+        const mode = CONFIG.TIMEZONE.MODE || 'browser';
         const activeTimeZone = Utils.getActiveTimeZone();
+        const customValue = CONFIG.TIMEZONE.CUSTOM || activeTimeZone || Utils.getBrowserTimeZone();
+        const serverTimeZone = CONFIG.TIMEZONE.DEFAULT || CONFIG.TIMEZONE.SERVER || 'UTC';
+        const browserTimeZone = Utils.getBrowserTimeZone();
 
         dialog.querySelectorAll('input[name="timezoneMode"]').forEach(input => {
             input.checked = input.value === mode;
@@ -520,9 +544,11 @@ const FunctionMenu = {
 
         const summary = dialog.querySelector('#timezoneSummary');
         if (summary) {
-            summary.textContent = `当前: ${activeTimeZone} · 服务端: ${CONFIG.TIMEZONE.DEFAULT || CONFIG.TIMEZONE.SERVER || 'UTC'}`;
+            summary.textContent = `当前: ${activeTimeZone} · 浏览器: ${browserTimeZone} · 服务端: ${serverTimeZone}`;
         }
 
+        this.updateTimezoneCustomInputState();
+        this.renderTimezoneOptions();
         dialog.classList.add('show');
     },
 
@@ -545,17 +571,20 @@ const FunctionMenu = {
                         <div class="timezone-summary" id="timezoneSummary"></div>
                         <label class="timezone-option">
                             <input type="radio" name="timezoneMode" value="server">
-                            <span>跟随服务端</span>
+                            <span>跟随服务端 <small id="timezoneServerLabel"></small></span>
                         </label>
                         <label class="timezone-option">
                             <input type="radio" name="timezoneMode" value="browser">
-                            <span>跟随当前浏览器</span>
+                            <span>跟随当前浏览器 <small id="timezoneBrowserLabel"></small></span>
                         </label>
                         <label class="timezone-option timezone-option-custom">
                             <input type="radio" name="timezoneMode" value="custom">
                             <span>自定义</span>
                         </label>
-                        <input class="timezone-custom-input" id="timezoneCustomValue" type="text" placeholder="Asia/Shanghai" autocomplete="off">
+                        <div class="timezone-combobox" id="timezoneCombobox">
+                            <input class="timezone-custom-input" id="timezoneCustomValue" type="text" placeholder="输入或选择时区" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="timezoneOptionList">
+                            <div class="timezone-option-list" id="timezoneOptionList" role="listbox"></div>
+                        </div>
                     </div>
                     <div class="timezone-dialog-actions">
                         <button class="timezone-text-button" id="timezoneCancelBtn" type="button">取消</button>
@@ -572,6 +601,214 @@ const FunctionMenu = {
         document.getElementById('timezoneCancelBtn')?.addEventListener('click', close);
         document.querySelector('#timezoneDialog .timezone-dialog-overlay')?.addEventListener('click', close);
         document.getElementById('timezoneSaveBtn')?.addEventListener('click', () => this.saveTimezonePreference());
+        document.querySelectorAll('#timezoneDialog input[name="timezoneMode"]').forEach(input => {
+            input.addEventListener('change', () => {
+                this.updateTimezoneCustomInputState({ showOptions: input.value === 'custom', resetFilter: input.value === 'custom' });
+            });
+        });
+        document.querySelectorAll('#timezoneDialog .timezone-option').forEach(option => {
+            option.addEventListener('click', () => {
+                const input = option.querySelector('input[name="timezoneMode"]');
+                if (!input || input.disabled) return;
+                input.checked = true;
+                this.updateTimezoneCustomInputState({ showOptions: input.value === 'custom', resetFilter: input.value === 'custom' });
+            });
+        });
+        const customInput = document.getElementById('timezoneCustomValue');
+        customInput?.addEventListener('focus', () => {
+            const customRadio = document.querySelector('#timezoneDialog input[name="timezoneMode"][value="custom"]');
+            if (customRadio && !customRadio.disabled) {
+                customRadio.checked = true;
+                this.updateTimezoneCustomInputState({ showOptions: true, resetFilter: true });
+            }
+        });
+        customInput?.addEventListener('input', () => {
+            this.selectTimezoneMode('custom');
+            this.renderTimezoneOptions(customInput.value);
+            this.showTimezoneOptions();
+        });
+        customInput?.addEventListener('keydown', (event) => this.handleTimezoneComboboxKeydown(event));
+        document.getElementById('timezoneOptionList')?.addEventListener('mousedown', (event) => {
+            const option = event.target.closest('[data-timezone]');
+            if (!option) return;
+            event.preventDefault();
+            this.chooseTimezoneOption(option.dataset.timezone);
+        });
+        document.addEventListener('mousedown', (event) => {
+            const dialog = document.getElementById('timezoneDialog');
+            const combobox = document.getElementById('timezoneCombobox');
+            if (!dialog?.classList.contains('show') || combobox?.contains(event.target)) return;
+            this.hideTimezoneOptions();
+        });
+    },
+
+    updateTimezoneCustomInputState(options = {}) {
+        const dialog = document.getElementById('timezoneDialog');
+        if (!dialog) return;
+
+        const customInput = dialog.querySelector('#timezoneCustomValue');
+        const checked = dialog.querySelector('input[name="timezoneMode"]:checked');
+        const customEnabled = checked?.value === 'custom';
+        if (customInput) {
+            customInput.disabled = !customEnabled;
+            customInput.setAttribute('aria-expanded', customEnabled ? 'true' : 'false');
+        }
+
+        const combobox = dialog.querySelector('#timezoneCombobox');
+        if (combobox) {
+            combobox.classList.toggle('disabled', !customEnabled);
+        }
+
+        const serverLabel = dialog.querySelector('#timezoneServerLabel');
+        if (serverLabel) serverLabel.textContent = CONFIG.TIMEZONE.DEFAULT || CONFIG.TIMEZONE.SERVER || 'UTC';
+
+        const browserLabel = dialog.querySelector('#timezoneBrowserLabel');
+        if (browserLabel) browserLabel.textContent = Utils.getBrowserTimeZone();
+
+        if (customEnabled) {
+            this.renderTimezoneOptions(options.resetFilter ? '' : (customInput?.value || ''));
+            if (options.showOptions) this.showTimezoneOptions();
+        } else {
+            this.hideTimezoneOptions();
+        }
+    },
+
+    selectTimezoneMode(mode) {
+        const radio = document.querySelector(`#timezoneDialog input[name="timezoneMode"][value="${mode}"]`);
+        if (!radio || radio.disabled) return;
+        radio.checked = true;
+        this.updateTimezoneCustomInputState();
+    },
+
+    getTimezoneOptions() {
+        if (this.timeZoneOptions.length > 0) return this.timeZoneOptions;
+
+        const preferred = [
+            Utils.getBrowserTimeZone(),
+            CONFIG.TIMEZONE.DEFAULT,
+            CONFIG.TIMEZONE.SERVER,
+            'Asia/Shanghai',
+            'Asia/Hong_Kong',
+            'Asia/Tokyo',
+            'Asia/Singapore',
+            'Asia/Seoul',
+            'Etc/UTC',
+            'Europe/London',
+            'Europe/Paris',
+            'America/New_York',
+            'America/Los_Angeles'
+        ].filter(Boolean);
+
+        let supported = [];
+        if (typeof Intl.supportedValuesOf === 'function') {
+            try {
+                supported = Intl.supportedValuesOf('timeZone');
+            } catch {
+                supported = [];
+            }
+        }
+
+        const fallback = [
+            'Asia/Shanghai',
+            'Asia/Hong_Kong',
+            'Asia/Taipei',
+            'Asia/Tokyo',
+            'Asia/Singapore',
+            'Asia/Seoul',
+            'Asia/Bangkok',
+            'Asia/Dubai',
+            'Etc/UTC',
+            'UTC',
+            'Europe/London',
+            'Europe/Paris',
+            'Europe/Berlin',
+            'America/New_York',
+            'America/Chicago',
+            'America/Denver',
+            'America/Los_Angeles',
+            'Australia/Sydney'
+        ];
+
+        this.timeZoneOptions = [...new Set([...preferred, ...(supported.length ? supported : fallback)])]
+            .filter(timeZone => Utils.isValidTimeZone(timeZone))
+            .sort((a, b) => a.localeCompare(b));
+        return this.timeZoneOptions;
+    },
+
+    renderTimezoneOptions(query = '') {
+        const list = document.getElementById('timezoneOptionList');
+        if (!list) return;
+
+        const normalizedQuery = query.trim().toLowerCase();
+        const matches = this.getTimezoneOptions()
+            .filter(timeZone => !normalizedQuery || timeZone.toLowerCase().includes(normalizedQuery))
+            .slice(0, 80);
+
+        if (matches.length === 0) {
+            list.innerHTML = '<div class="timezone-option-empty">没有匹配的时区</div>';
+            return;
+        }
+
+        list.innerHTML = matches
+            .map((timeZone, index) => {
+                const selected = timeZone === document.getElementById('timezoneCustomValue')?.value?.trim();
+                return `<button class="timezone-option-item${index === 0 ? ' active' : ''}" type="button" role="option" data-timezone="${Utils.escapeHtml(timeZone)}" aria-selected="${selected ? 'true' : 'false'}">${Utils.escapeHtml(timeZone)}</button>`;
+            })
+            .join('');
+    },
+
+    showTimezoneOptions() {
+        const dialog = document.getElementById('timezoneDialog');
+        const checked = dialog?.querySelector('input[name="timezoneMode"]:checked');
+        if (checked?.value !== 'custom') return;
+
+        const list = document.getElementById('timezoneOptionList');
+        const input = document.getElementById('timezoneCustomValue');
+        if (list) list.classList.add('show');
+        if (input) input.setAttribute('aria-expanded', 'true');
+    },
+
+    hideTimezoneOptions() {
+        const list = document.getElementById('timezoneOptionList');
+        const input = document.getElementById('timezoneCustomValue');
+        if (list) list.classList.remove('show');
+        if (input) input.setAttribute('aria-expanded', 'false');
+    },
+
+    chooseTimezoneOption(timeZone) {
+        const input = document.getElementById('timezoneCustomValue');
+        if (input) input.value = timeZone;
+        this.selectTimezoneMode('custom');
+        this.renderTimezoneOptions(timeZone);
+        this.hideTimezoneOptions();
+    },
+
+    handleTimezoneComboboxKeydown(event) {
+        const list = document.getElementById('timezoneOptionList');
+        if (!list) return;
+
+        const items = Array.from(list.querySelectorAll('.timezone-option-item'));
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            this.showTimezoneOptions();
+            if (items.length === 0) return;
+
+            const currentIndex = Math.max(0, items.findIndex(item => item.classList.contains('active')));
+            const nextIndex = event.key === 'ArrowDown'
+                ? Math.min(items.length - 1, currentIndex + 1)
+                : Math.max(0, currentIndex - 1);
+            items.forEach(item => item.classList.remove('active'));
+            items[nextIndex].classList.add('active');
+            items[nextIndex].scrollIntoView({ block: 'nearest' });
+        } else if (event.key === 'Enter' && list.classList.contains('show')) {
+            const active = list.querySelector('.timezone-option-item.active');
+            if (active) {
+                event.preventDefault();
+                this.chooseTimezoneOption(active.dataset.timezone);
+            }
+        } else if (event.key === 'Escape') {
+            this.hideTimezoneOptions();
+        }
     },
 
     hideTimezoneDialog() {
@@ -587,8 +824,10 @@ const FunctionMenu = {
             const active = Utils.setTimeZonePreference(mode, customValue);
             this.hideTimezoneDialog();
             UI.showSuccess(`时区已切换为 ${active}`);
-            if (window.MessageHandler && typeof MessageHandler.loadMessages === 'function') {
-                MessageHandler.loadMessages(false);
+            if (window.UI && typeof UI.refreshMessagePresentation === 'function') {
+                UI.refreshMessagePresentation();
+            } else if (window.MessageHandler && typeof MessageHandler.loadMessages === 'function') {
+                MessageHandler.loadMessages(true);
             }
             if (window.SearchAPI && typeof SearchAPI.clearCache === 'function') {
                 SearchAPI.clearCache();
