@@ -1,0 +1,15 @@
+node_modules/
+.env
+
+data/
+uploads/
+backups/
+*.db
+*.db-shm
+*.db-wal
+
+npm-debug.log*
+.DS_Store
+
+.firecrawl/
+SELFHOST_SERVER4_PLAN.md
