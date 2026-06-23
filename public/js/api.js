@@ -1,20 +1,36 @@
 ﻿// API 接口封装 - 重构版：加 AbortController 超时，改 getMessages 静默失败为透传
 
 const API = {
+    getWorkspaceId(explicitWorkspaceId = null) {
+        if (explicitWorkspaceId) return explicitWorkspaceId;
+        if (typeof WorkspaceManager !== 'undefined' && WorkspaceManager.getCurrentWorkspaceId) {
+            return WorkspaceManager.getCurrentWorkspaceId();
+        }
+        return CONFIG.WORKSPACE?.DEFAULT_ID || 'default';
+    },
+
+    withWorkspaceHeaders(headers = {}, workspaceId = null) {
+        return {
+            ...headers,
+            'X-Workspace-Id': this.getWorkspaceId(workspaceId),
+        };
+    },
+
     // 通用请求方法（支持超时）
     async request(url, options = {}) {
-        const { timeout = 15000, ...fetchOptions } = options;
+        const { timeout = 15000, workspaceId = null, skipWorkspace = false, ...fetchOptions } = options;
 
         const defaultHeaders = {
             'Content-Type': 'application/json',
         };
 
         const authHeaders = Auth ? Auth.addAuthHeader(defaultHeaders) : defaultHeaders;
+        const workspaceHeaders = skipWorkspace ? authHeaders : this.withWorkspaceHeaders(authHeaders, workspaceId);
 
         const config = {
             ...fetchOptions,
             headers: {
-                ...authHeaders,
+                ...workspaceHeaders,
                 ...(fetchOptions.headers || {}),
             },
         };
@@ -56,17 +72,18 @@ const API = {
     },
     
     // GET 请求
-    async get(url, params = {}) {
+    async get(url, params = {}, options = {}) {
         const urlParams = new URLSearchParams(params);
         const fullUrl = urlParams.toString() ? `${url}?${urlParams}` : url;
-        return this.request(fullUrl, { method: 'GET' });
+        return this.request(fullUrl, { method: 'GET', ...options });
     },
     
     // POST 请求
-    async post(url, data = {}) {
+    async post(url, data = {}, options = {}) {
         return this.request(url, {
             method: 'POST',
             body: JSON.stringify(data),
+            ...options,
         });
     },
 
@@ -79,8 +96,9 @@ const API = {
     },
     
     // 文件上传请求
-    async upload(url, formData) {
+    async upload(url, formData, workspaceId = null) {
         const authHeaders = Auth ? Auth.addAuthHeader({}) : {};
+        const headers = this.withWorkspaceHeaders(authHeaders, workspaceId);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 60000); // 文件上传60秒超时
@@ -88,7 +106,7 @@ const API = {
         try {
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { ...authHeaders },
+                headers,
                 body: formData,
                 signal: controller.signal,
             });
@@ -114,8 +132,8 @@ const API = {
     },
     
     // 获取消息列表（修复：不再静默返回空数组，让调用方处理错误）
-    async getMessages(limit = CONFIG.UI.MESSAGE_LOAD_LIMIT, offset = 0) {
-        const response = await this.get(CONFIG.API.ENDPOINTS.MESSAGES, { limit, offset });
+    async getMessages(limit = CONFIG.UI.MESSAGE_LOAD_LIMIT, offset = 0, workspaceId = null) {
+        const response = await this.get(CONFIG.API.ENDPOINTS.MESSAGES, { limit, offset }, { workspaceId });
 
         if (response && response.success) {
             return response.data || [];
@@ -126,10 +144,11 @@ const API = {
     },
     
     // 发送文本消息
-    async sendMessage(content, deviceId, deviceInfo = Utils.getMessageDeviceInfo()) {
+    async sendMessage(content, deviceId, deviceInfo = Utils.getMessageDeviceInfo(), workspaceId = null) {
         const response = await this.post(
             CONFIG.API.ENDPOINTS.MESSAGES,
-            this.withDeviceInfo({ content, deviceId }, deviceInfo)
+            this.withDeviceInfo({ content, deviceId }, deviceInfo),
+            { workspaceId }
         );
 
         if (response.success) {
@@ -139,13 +158,13 @@ const API = {
     },
 
     // 发送AI消息
-    async sendAIMessage(content, deviceId = 'ai-system', type = 'ai_response', deviceInfo = null) {
+    async sendAIMessage(content, deviceId = 'ai-system', type = 'ai_response', deviceInfo = null, workspaceId = null) {
         const response = await this.post(CONFIG.API.ENDPOINTS.AI_MESSAGE || '/api/ai/message', {
             content,
             deviceId,
             type,
             ...(deviceInfo ? { deviceInfo } : {})
-        });
+        }, { workspaceId });
 
         if (response && response.success) {
             return response.data;
@@ -154,7 +173,7 @@ const API = {
     },
     
     // 上传文件
-    async uploadFile(file, deviceId, onProgress = null, deviceInfo = Utils.getMessageDeviceInfo()) {
+    async uploadFile(file, deviceId, onProgress = null, deviceInfo = Utils.getMessageDeviceInfo(), workspaceId = null) {
         if (!Utils.validateFileSize(file.size)) {
             throw new Error(CONFIG.ERRORS.FILE_TOO_LARGE);
         }
@@ -167,10 +186,10 @@ const API = {
         }
 
         if (onProgress) {
-            return this.uploadWithProgress(CONFIG.API.ENDPOINTS.FILES_UPLOAD, formData, onProgress);
+            return this.uploadWithProgress(CONFIG.API.ENDPOINTS.FILES_UPLOAD, formData, onProgress, workspaceId);
         }
 
-        const response = await this.upload(CONFIG.API.ENDPOINTS.FILES_UPLOAD, formData);
+        const response = await this.upload(CONFIG.API.ENDPOINTS.FILES_UPLOAD, formData, workspaceId);
 
         if (response.success) {
             return response.data;
@@ -179,7 +198,7 @@ const API = {
     },
     
     // 带进度的文件上传
-    uploadWithProgress(url, formData, onProgress) {
+    uploadWithProgress(url, formData, onProgress, workspaceId = null) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
 
@@ -214,19 +233,20 @@ const API = {
             if (Auth && Auth.getToken()) {
                 xhr.setRequestHeader('Authorization', `Bearer ${Auth.getToken()}`);
             }
+            xhr.setRequestHeader('X-Workspace-Id', this.getWorkspaceId(workspaceId));
             xhr.send(formData);
         });
     },
     
     // 下载文件
-    async downloadFile(r2Key, fileName) {
+    async downloadFile(r2Key, fileName, workspaceId = null) {
         try {
             const url = `${CONFIG.API.ENDPOINTS.FILES_DOWNLOAD}/${r2Key}`;
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-            const headers = Auth ? Auth.addAuthHeader({}) : {};
+            const headers = this.withWorkspaceHeaders(Auth ? Auth.addAuthHeader({}) : {}, workspaceId);
             const response = await fetch(url, { headers, signal: controller.signal });
 
             clearTimeout(timeoutId);
@@ -260,6 +280,72 @@ const API = {
         }
     },
 
+    imageBlobUrlCache: new Map(),
+
+    async getImageBlobUrl(r2Key, workspaceId = null) {
+        const currentWorkspaceId = this.getWorkspaceId(workspaceId);
+        const cacheKey = `${currentWorkspaceId}:${r2Key}`;
+        if (this.imageBlobUrlCache.has(cacheKey)) {
+            return this.imageBlobUrlCache.get(cacheKey);
+        }
+
+        const url = `${CONFIG.API.ENDPOINTS.FILES_DOWNLOAD}/${r2Key}`;
+        const headers = this.withWorkspaceHeaders(Auth ? Auth.addAuthHeader({}) : {}, currentWorkspaceId);
+        const response = await fetch(url, { headers });
+
+        if (!response.ok) {
+            throw new Error(`图片加载失败: ${response.status} ${response.statusText}`);
+        }
+
+        const blobUrl = window.URL.createObjectURL(await response.blob());
+        this.imageBlobUrlCache.set(cacheKey, blobUrl);
+        return blobUrl;
+    },
+
+    revokeImageBlobUrl(r2Key, workspaceId = null) {
+        const currentWorkspaceId = this.getWorkspaceId(workspaceId);
+        const cacheKey = `${currentWorkspaceId}:${r2Key}`;
+        const blobUrl = this.imageBlobUrlCache.get(cacheKey);
+        if (blobUrl) {
+            window.URL.revokeObjectURL(blobUrl);
+            this.imageBlobUrlCache.delete(cacheKey);
+        }
+    },
+
+    clearImageBlobCache() {
+        this.imageBlobUrlCache.forEach((blobUrl) => window.URL.revokeObjectURL(blobUrl));
+        this.imageBlobUrlCache.clear();
+    },
+
+    async getWorkspaces() {
+        const response = await this.get(CONFIG.API.ENDPOINTS.WORKSPACES);
+        if (response && response.success) return response.data || [];
+        throw new Error(response?.error || '获取工作区失败');
+    },
+
+    async createWorkspace(payload) {
+        const response = await this.post(CONFIG.API.ENDPOINTS.WORKSPACES, payload);
+        if (response && response.success) return response.data;
+        throw new Error(response?.error || '创建工作区失败');
+    },
+
+    async updateWorkspace(id, payload) {
+        const response = await this.request(`${CONFIG.API.ENDPOINTS.WORKSPACES}/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+        if (response && response.success) return response.data;
+        throw new Error(response?.error || '更新工作区失败');
+    },
+
+    async deleteWorkspace(id) {
+        const response = await this.request(`${CONFIG.API.ENDPOINTS.WORKSPACES}/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+        });
+        if (response && response.success) return true;
+        throw new Error(response?.error || '删除工作区失败');
+    },
+
     // 设备同步
     async syncDevice(deviceId, deviceName) {
         return this.post(CONFIG.API.ENDPOINTS.SYNC, { deviceId, deviceName });
@@ -273,7 +359,7 @@ const API = {
     // 检查认证状态
     async checkAuthStatus() {
         try {
-            const response = await this.get(CONFIG.API.ENDPOINTS.AUTH_VERIFY);
+            const response = await this.get(CONFIG.API.ENDPOINTS.AUTH_VERIFY, {}, { skipWorkspace: true });
             return response.valid === true;
         } catch (error) {
             console.warn('[API] 认证状态检查失败:', error);

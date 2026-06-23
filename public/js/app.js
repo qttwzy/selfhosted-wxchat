@@ -55,6 +55,11 @@ class WeChatApp {
             // 基础UI模块
             UI.init();
 
+            if (typeof WorkspaceManager !== 'undefined') {
+                await WorkspaceManager.init();
+                window.WorkspaceManager = WorkspaceManager;
+            }
+
             // 核心功能组件
             initModule('FunctionMenu', typeof FunctionMenu !== 'undefined' ? FunctionMenu : null);
             initModule('FunctionButton', typeof FunctionButton !== 'undefined' ? FunctionButton : null);
@@ -328,6 +333,9 @@ window.WeChatApp = app;
 window.CONFIG = CONFIG;
 window.Utils = Utils;
 window.API = API;
+if (typeof WorkspaceManager !== 'undefined') {
+    window.WorkspaceManager = WorkspaceManager;
+}
 window.UI = UI;
 window.FileUpload = FileUpload;
 window.MessageHandler = MessageHandler;
@@ -375,6 +383,7 @@ if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
         CONFIG,
         Utils,
         API,
+        WorkspaceManager: typeof WorkspaceManager !== 'undefined' ? WorkspaceManager : undefined,
         UI,
         FileUpload,
         MessageHandler,

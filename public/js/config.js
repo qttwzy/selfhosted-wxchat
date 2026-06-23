@@ -14,6 +14,7 @@ const CONFIG = {
             CONFIG: '/api/config',
             AI_CHAT: '/api/ai/chat',
             AI_IMAGE: '/api/ai/image',
+            WORKSPACES: '/api/workspaces',
             // 鉴权相关接口
             AUTH_LOGIN: '/api/auth/login',
             AUTH_VERIFY: '/api/auth/verify',
@@ -55,6 +56,11 @@ const CONFIG = {
         DEVICE_INFO_ENABLED: false,
         GROUP_WINDOW_MINUTES: 15,
         DEVICE_COLOR_COUNT: 8
+    },
+
+    WORKSPACE: {
+        DEFAULT_ID: 'default',
+        STORAGE_KEY: 'wxchat.workspace.id'
     },
 
     // 时区配置

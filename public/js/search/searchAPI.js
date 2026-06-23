@@ -52,10 +52,13 @@ const SearchAPI = {
             
             // 添加认证头
             const authHeaders = Auth ? Auth.addAuthHeader(headers) : headers;
+            const requestHeaders = typeof API !== 'undefined'
+                ? API.withWorkspaceHeaders(authHeaders)
+                : authHeaders;
             
             const response = await fetch(`${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.SEARCH}?${params}`, {
                 method: 'GET',
-                headers: authHeaders
+                headers: requestHeaders
             });
 
             if (!response.ok) {
@@ -95,10 +98,13 @@ const SearchAPI = {
             
             // 添加认证头
             const authHeaders = Auth ? Auth.addAuthHeader(headers) : headers;
+            const requestHeaders = typeof API !== 'undefined'
+                ? API.withWorkspaceHeaders(authHeaders)
+                : authHeaders;
             
             const response = await fetch(`${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.SEARCH_SUGGESTIONS}?q=${encodeURIComponent(query)}`, {
                 method: 'GET',
-                headers: authHeaders
+                headers: requestHeaders
             });
 
             if (!response.ok) {
@@ -117,6 +123,9 @@ const SearchAPI = {
     // 构建缓存键
     buildCacheKey(query, filters) {
         const parts = [query];
+        if (typeof API !== 'undefined' && API.getWorkspaceId) {
+            parts.push(`workspace:${API.getWorkspaceId()}`);
+        }
         
         if (filters.type) parts.push(`type:${filters.type}`);
         if (filters.timeRange) parts.push(`time:${filters.timeRange}`);

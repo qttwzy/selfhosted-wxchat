@@ -35,7 +35,8 @@ const ImageGenAPI = {
                 requestBody.seed = options.seed;
             }
             
-            const headers = typeof Auth !== 'undefined' ? Auth.addAuthHeader({ 'Content-Type': 'application/json' }) : { 'Content-Type': 'application/json' };
+            const authHeaders = typeof Auth !== 'undefined' ? Auth.addAuthHeader({ 'Content-Type': 'application/json' }) : { 'Content-Type': 'application/json' };
+            const headers = typeof API !== 'undefined' ? API.withWorkspaceHeaders(authHeaders) : authHeaders;
             const response = await fetch(CONFIG.API.ENDPOINTS.AI_IMAGE, {
                 method: 'POST',
                 headers,

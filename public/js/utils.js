@@ -1,6 +1,8 @@
 // 工具函数库
 
 const Utils = {
+    activeInputDialog: null,
+
     // 生成设备ID
     generateDeviceId() {
         const timestamp = Date.now();
@@ -476,6 +478,215 @@ const Utils = {
             toast.classList.remove('show');
             setTimeout(() => toast.remove(), 300);
         }, type === 'error' ? 3000 : 2000);
+    },
+
+    closeActiveInputDialog() {
+        if (this.activeInputDialog && typeof this.activeInputDialog.close === 'function') {
+            this.activeInputDialog.close();
+        }
+    },
+
+    showInputDialog(options = {}) {
+        const {
+            title = '请输入',
+            message = '',
+            placeholder = '',
+            defaultValue = '',
+            confirmText = '确定',
+            cancelText = '取消',
+            inputType = 'text',
+            multiline = false,
+            rows = 3,
+            maxLength = null,
+            required = true,
+            trim = true,
+            helperText = '',
+            validate = null,
+        } = options;
+
+        if (!document.body) {
+            return Promise.resolve(null);
+        }
+
+        this.closeActiveInputDialog();
+
+        return new Promise((resolve) => {
+            let closed = false;
+
+            const overlay = document.createElement('div');
+            overlay.className = 'md-dialog-overlay md-input-dialog-overlay';
+
+            const dialog = document.createElement('div');
+            dialog.className = 'md-dialog md-input-dialog';
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            dialog.setAttribute('aria-label', title);
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'md-dialog-title';
+            titleEl.textContent = title;
+            dialog.appendChild(titleEl);
+
+            if (message) {
+                const messageEl = document.createElement('div');
+                messageEl.className = 'md-dialog-message';
+                messageEl.textContent = message;
+                dialog.appendChild(messageEl);
+            }
+
+            const fieldWrap = document.createElement('div');
+            fieldWrap.className = 'md-dialog-field';
+
+            const field = multiline ? document.createElement('textarea') : document.createElement('input');
+            field.className = multiline ? 'md-dialog-input md-dialog-textarea' : 'md-dialog-input';
+            field.value = defaultValue;
+            field.placeholder = placeholder;
+            field.autocomplete = 'off';
+            field.spellcheck = false;
+            if (maxLength !== null && Number.isFinite(Number(maxLength))) {
+                field.maxLength = Number(maxLength);
+            }
+
+            if (multiline) {
+                field.rows = rows;
+            } else {
+                field.type = inputType;
+            }
+
+            field.addEventListener('input', () => {
+                errorEl.textContent = '';
+            });
+
+            fieldWrap.appendChild(field);
+
+            if (helperText) {
+                const hintEl = document.createElement('div');
+                hintEl.className = 'md-dialog-hint';
+                hintEl.textContent = helperText;
+                fieldWrap.appendChild(hintEl);
+            }
+
+            const errorEl = document.createElement('div');
+            errorEl.className = 'md-dialog-error';
+            errorEl.setAttribute('aria-live', 'polite');
+            fieldWrap.appendChild(errorEl);
+
+            dialog.appendChild(fieldWrap);
+
+            const actions = document.createElement('div');
+            actions.className = 'md-dialog-actions';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'md-text-button';
+            cancelBtn.textContent = cancelText;
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.className = 'md-tonal-button';
+            confirmBtn.textContent = confirmText;
+
+            actions.append(cancelBtn, confirmBtn);
+            dialog.appendChild(actions);
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            document.body.classList.add('md-dialog-open');
+
+            const normalizeValue = () => {
+                const rawValue = field.value;
+                return trim ? rawValue.trim() : rawValue;
+            };
+
+            const finish = (value = null) => {
+                if (closed) return;
+                closed = true;
+
+                overlay.classList.remove('show');
+                document.body.classList.remove('md-dialog-open');
+                document.removeEventListener('keydown', onKeyDown, true);
+                overlay.removeEventListener('click', onOverlayClick);
+                cancelBtn.removeEventListener('click', onCancel);
+                confirmBtn.removeEventListener('click', onConfirm);
+
+                window.setTimeout(() => {
+                    if (overlay.parentNode) {
+                        overlay.parentNode.removeChild(overlay);
+                    }
+                }, 160);
+
+                if (this.activeInputDialog && this.activeInputDialog.overlay === overlay) {
+                    this.activeInputDialog = null;
+                }
+
+                resolve(value);
+            };
+
+            const onCancel = () => finish(null);
+
+            const onConfirm = () => {
+                const value = normalizeValue();
+
+                if (required && !value) {
+                    errorEl.textContent = '请输入内容';
+                    field.focus();
+                    return;
+                }
+
+                if (typeof validate === 'function') {
+                    const validationResult = validate(value);
+                    if (validationResult === false) {
+                        errorEl.textContent = '输入无效';
+                        field.focus();
+                        return;
+                    }
+                    if (typeof validationResult === 'string' && validationResult) {
+                        errorEl.textContent = validationResult;
+                        field.focus();
+                        return;
+                    }
+                }
+
+                finish(value);
+            };
+
+            const onOverlayClick = (event) => {
+                if (event.target === overlay) {
+                    onCancel();
+                }
+            };
+
+            const onKeyDown = (event) => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    onCancel();
+                    return;
+                }
+
+                if (event.key === 'Enter') {
+                    if (multiline && !(event.ctrlKey || event.metaKey)) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    onConfirm();
+                }
+            };
+
+            cancelBtn.addEventListener('click', onCancel);
+            confirmBtn.addEventListener('click', onConfirm);
+            overlay.addEventListener('click', onOverlayClick);
+            document.addEventListener('keydown', onKeyDown, true);
+
+            this.activeInputDialog = { overlay, close: onCancel };
+
+            requestAnimationFrame(() => {
+                overlay.classList.add('show');
+                field.focus();
+                if (!multiline && typeof field.select === 'function') {
+                    field.select();
+                }
+            });
+        });
     },
     
     // 请求通知权限

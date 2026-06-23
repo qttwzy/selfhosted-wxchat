@@ -33,6 +33,60 @@
   min-height: 0;
 }
 
+/* ---- Workspace Switcher ---- */
+.workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.workspace-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  flex-shrink: 0;
+}
+
+.workspace-selector {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  padding: 0 32px 0 10px;
+}
+
+.workspace-selector:focus {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 1px;
+}
+
+.workspace-add-button {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface-variant);
+  transition: background var(--md-sys-duration-short3) ease;
+}
+
+.workspace-add-button:hover {
+  background: var(--md-sys-color-surface-variant);
+}
+
 /* ---- Message List (MD3 Surface) ---- */
 .message-list {
   flex: 1;

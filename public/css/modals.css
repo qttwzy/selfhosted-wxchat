@@ -471,6 +471,66 @@
   margin-top: 24px;
 }
 
+.md-dialog-message {
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.md-dialog-field {
+  display: grid;
+  gap: 8px;
+}
+
+.md-dialog-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-outlined-text-field-container-shape);
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line);
+  transition: border var(--md-sys-duration-medium1) var(--md-sys-motion-easing-standard);
+}
+
+.md-dialog-input:focus {
+  border: 2px solid var(--md-sys-color-primary);
+  padding: 0 13px;
+}
+
+.md-dialog-textarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: var(--md-sys-typescale-body-large-line);
+}
+
+.md-dialog-textarea:focus {
+  padding: 11px 13px;
+}
+
+.md-dialog-hint {
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md-dialog-error {
+  min-height: 18px;
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line);
+  color: var(--md-sys-color-error);
+}
+
+.md-dialog-open {
+  overflow: hidden;
+}
+
 /* ---- MD3 Text Button ---- */
 .md-text-button {
   padding: 8px 16px;

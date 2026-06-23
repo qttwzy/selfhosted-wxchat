@@ -237,8 +237,21 @@ const ImageGenUI = {
     },
     
     // 显示快速生成输入框（简化版）
-    showQuickGenInput() {
-        const prompt = window.prompt('请输入图片描述:', '');
+    async showQuickGenInput() {
+        const prompt = await Utils.showInputDialog({
+            title: '快速生成图片',
+            message: '输入一句话描述，立刻开始生成。',
+            placeholder: '例如：一只坐在窗台上的橘猫',
+            defaultValue: '',
+            confirmText: '生成',
+            cancelText: '取消',
+            multiline: true,
+            rows: 3,
+            maxLength: CONFIG.IMAGE_GEN.MAX_PROMPT_LENGTH,
+            helperText: `最多 ${CONFIG.IMAGE_GEN.MAX_PROMPT_LENGTH} 个字符。`,
+            validate: (value) => value.length > 0 || '请输入图片描述',
+        });
+
         if (prompt && prompt.trim()) {
             // 使用默认参数快速生成
             const event = new CustomEvent('imageGenRequest', {

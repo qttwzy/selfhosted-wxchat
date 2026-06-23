@@ -116,6 +116,18 @@ const UI = {
             </div>
         `;
     },
+
+    // 清理消息区的临时占位内容
+    clearMessagePlaceholders() {
+        const container = this.elements.messageList;
+        if (!container) return;
+
+        const placeholders = container.querySelectorAll('.loading, .empty-state');
+        if (placeholders.length === 0) return;
+
+        placeholders.forEach((node) => node.remove());
+        this.messageCache.clear();
+    },
     
     // 确保顶部加载指示器存在（修复之前调用了未定义函数的问题）
     ensureTopLoadingIndicator() {
@@ -176,11 +188,8 @@ const UI = {
         const messageContainer = this.elements.messageList;
         if (!messageContainer) return;
 
-        // 如果是空状态，清空并重新开始
-        if (messageContainer.querySelector('.empty-state')) {
-            messageContainer.innerHTML = '';
-            this.messageCache.clear();
-        }
+        // 如果此前显示过占位内容，先移除再渲染真实消息
+        this.clearMessagePlaceholders();
 
         // 确保顶部加载指示器存在
         this.ensureTopLoadingIndicator();
@@ -327,6 +336,11 @@ const UI = {
     // 显示成功通知
     showSuccess(message) {
         Utils.showNotification(message, 'success');
+    },
+
+    // 显示信息通知
+    showInfo(message) {
+        Utils.showNotification(message, 'info');
     },
 
     // 显示错误通知
