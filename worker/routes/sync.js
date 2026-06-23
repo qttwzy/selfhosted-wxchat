@@ -2,6 +2,7 @@
 import { MessageService } from '../services/messageService.js'
 import { FileService } from '../services/fileService.js'
 import { DeviceService } from '../services/deviceService.js'
+import { WorkspaceService } from '../services/workspaceService.js'
 import { validateParams } from '../middleware/errorHandler.js'
 
 const sync = new Hono()
@@ -10,11 +11,56 @@ function deviceInfoEnabled(env) {
   return env.MESSAGE_DEVICE_INFO_ENABLED === true || env.MESSAGE_DEVICE_INFO_ENABLED === 'true'
 }
 
+async function clearAllHandler(c) {
+  try {
+    const { DB, R2 } = c.env
+    const { confirmCode } = await c.req.json()
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
+
+    if (confirmCode !== '1234') {
+      return c.json({ success: false, error: '确认码错误，请输入正确的确认码' }, 400)
+    }
+
+    // 清理前统计
+    const messageCount = await MessageService.countAll(DB, workspaceId)
+    const fileStats = await FileService.getStats(DB, workspaceId)
+
+    // 删除R2文件
+    const r2Keys = await FileService.getAllR2Keys(DB, workspaceId)
+    let deletedR2Files = 0
+    for (const key of r2Keys) {
+      if (await FileService.deleteFromR2(R2, key)) {
+        deletedR2Files++
+      }
+    }
+
+    // 清空当前工作区数据库表
+    await MessageService.deleteAll(DB, workspaceId)
+    await FileService.deleteAll(DB, workspaceId)
+    await DeviceService.deleteAll(DB, workspaceId)
+
+    return c.json({
+      success: true,
+      data: {
+        deletedMessages: messageCount,
+        deletedFiles: fileStats?.count || 0,
+        deletedFileSize: fileStats?.totalSize || 0,
+        deletedR2Files,
+        message: '当前工作区数据已成功清理'
+      }
+    })
+  } catch (error) {
+    console.error('[Sync] 清理失败:', error)
+    return c.json({ success: false, error: error.message }, 500)
+  }
+}
+
 // AI消息处理接口
 sync.post('/ai/message', async (c) => {
   try {
     const { DB } = c.env
     const { content, deviceId, type = 'ai_response', deviceInfo } = await c.req.json()
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     validateParams({ content, deviceId }, ['content', 'deviceId'])
 
@@ -22,7 +68,8 @@ sync.post('/ai/message', async (c) => {
       content,
       deviceId,
       type,
-      deviceInfo: deviceInfoEnabled(c.env) ? deviceInfo : null
+      deviceInfo: deviceInfoEnabled(c.env) ? deviceInfo : null,
+      workspaceId
     })
 
     return c.json({ success: true, data: result })
@@ -38,10 +85,11 @@ sync.post('/sync', async (c) => {
   try {
     const { DB } = c.env
     const { deviceId, deviceName } = await c.req.json()
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     validateParams({ deviceId }, ['deviceId'])
 
-    await DeviceService.syncDevice(DB, { deviceId, deviceName })
+    await DeviceService.syncDevice(DB, { deviceId, deviceName, workspaceId })
 
     return c.json({ success: true, message: '设备同步成功' })
   } catch (error) {
@@ -50,48 +98,8 @@ sync.post('/sync', async (c) => {
   }
 })
 
-// 数据清理 - 清空所有数据
-sync.post('/clear-all', async (c) => {
-  try {
-    const { DB, R2 } = c.env
-    const { confirmCode } = await c.req.json()
-
-    if (confirmCode !== '1234') {
-      return c.json({ success: false, error: '确认码错误，请输入正确的确认码' }, 400)
-    }
-
-    // 清理前统计
-    const messageCount = await MessageService.countAll(DB)
-    const fileStats = await FileService.getStats(DB)
-
-    // 删除R2文件
-    const r2Keys = await FileService.getAllR2Keys(DB)
-    let deletedR2Files = 0
-    for (const key of r2Keys) {
-      if (await FileService.deleteFromR2(R2, key)) {
-        deletedR2Files++
-      }
-    }
-
-    // 清空数据库表
-    await MessageService.deleteAll(DB)
-    await FileService.deleteAll(DB)
-    await DeviceService.deleteAll(DB)
-
-    return c.json({
-      success: true,
-      data: {
-        deletedMessages: messageCount,
-        deletedFiles: fileStats?.count || 0,
-        deletedFileSize: fileStats?.totalSize || 0,
-        deletedR2Files,
-        message: '所有数据已成功清理'
-      }
-    })
-  } catch (error) {
-    console.error('[Sync] 清理失败:', error)
-    return c.json({ success: false, error: error.message }, 500)
-  }
-})
+// 数据清理 - 清空当前工作区数据
+sync.post('/clear-all', clearAllHandler)
+sync.post('/sync/clear-all', clearAllHandler)
 
 export default sync

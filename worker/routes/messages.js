@@ -1,5 +1,6 @@
 ﻿import { Hono } from 'hono'
 import { MessageService } from '../services/messageService.js'
+import { WorkspaceService } from '../services/workspaceService.js'
 import { validateParams } from '../middleware/errorHandler.js'
 
 const messages = new Hono()
@@ -14,8 +15,9 @@ messages.get('/', async (c) => {
     const { DB } = c.env
     const limit = c.req.query('limit') || '50'
     const offset = c.req.query('offset') || '0'
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
-    const result = await MessageService.getMessages(DB, { limit, offset })
+    const result = await MessageService.getMessages(DB, { limit, offset, workspaceId })
 
     return c.json({
       success: true,
@@ -38,6 +40,7 @@ messages.post('/', async (c) => {
   try {
     const { DB } = c.env
     const { content, deviceId, type = 'text', deviceInfo } = await c.req.json()
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     validateParams({ content, deviceId }, ['content', 'deviceId'])
 
@@ -45,7 +48,8 @@ messages.post('/', async (c) => {
       type,
       content,
       deviceId,
-      deviceInfo: deviceInfoEnabled(c.env) ? deviceInfo : null
+      deviceInfo: deviceInfoEnabled(c.env) ? deviceInfo : null,
+      workspaceId
     })
 
     return c.json({

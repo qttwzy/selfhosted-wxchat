@@ -1,6 +1,7 @@
 ﻿import { Hono } from 'hono'
 import { FileService } from '../services/fileService.js'
 import { MessageService } from '../services/messageService.js'
+import { WorkspaceService } from '../services/workspaceService.js'
 import { validateParams } from '../middleware/errorHandler.js'
 
 const files = new Hono()
@@ -26,6 +27,7 @@ files.post('/upload', async (c) => {
     const file = formData.get('file')
     const deviceId = formData.get('deviceId')
     const deviceInfo = deviceInfoEnabled(c.env) ? parseDeviceInfo(formData.get('deviceInfo')) : null
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     validateParams({ file: file ? 'present' : null, deviceId }, ['file', 'deviceId'])
 
@@ -54,11 +56,12 @@ files.post('/upload', async (c) => {
         r2Key,
         fileSize: file.size,
         mimeType: file.type,
-        deviceId
+        deviceId,
+        workspaceId
       })
 
       // 创建文件消息
-      await MessageService.createFileMessage(DB, fileRecord.id, deviceId, deviceInfo)
+      await MessageService.createFileMessage(DB, fileRecord.id, deviceId, deviceInfo, workspaceId)
 
       return c.json({
         success: true,
@@ -93,9 +96,10 @@ files.get('/download/:r2Key', async (c) => {
   try {
     const { DB, R2 } = c.env
     const r2Key = c.req.param('r2Key')
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     // 获取文件信息
-    const fileInfo = await FileService.getFileByR2Key(DB, r2Key)
+    const fileInfo = await FileService.getFileByR2Key(DB, r2Key, workspaceId)
     if (!fileInfo) {
       return c.json({ success: false, error: '文件不存在' }, 404)
     }
@@ -108,7 +112,7 @@ files.get('/download/:r2Key', async (c) => {
 
     // 异步更新下载次数（不阻塞响应）
     c.executionCtx.waitUntil(
-      FileService.incrementDownloadCount(DB, r2Key)
+      FileService.incrementDownloadCount(DB, r2Key, workspaceId)
     )
 
     return new Response(object.body, {

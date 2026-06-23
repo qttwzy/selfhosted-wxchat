@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { MessageService } from '../services/messageService.js'
+import { WorkspaceService } from '../services/workspaceService.js'
 import { validateParams } from '../middleware/errorHandler.js'
 
 const ai = new Hono()
@@ -60,6 +61,7 @@ ai.post('/message', async (c) => {
   try {
     const { DB } = c.env
     const { content, deviceId, type = 'ai_response', deviceInfo } = await c.req.json()
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     validateParams({ content, deviceId }, ['content', 'deviceId'])
 
@@ -67,7 +69,8 @@ ai.post('/message', async (c) => {
       content,
       deviceId,
       type,
-      deviceInfo: deviceInfoEnabled(c.env) ? deviceInfo : null
+      deviceInfo: deviceInfoEnabled(c.env) ? deviceInfo : null,
+      workspaceId
     })
 
     return c.json({ success: true, data: result })

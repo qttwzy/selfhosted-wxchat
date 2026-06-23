@@ -3,8 +3,13 @@
  */
 
 import { DBService } from './database.js'
+import { DEFAULT_WORKSPACE_ID, WorkspaceService } from './workspaceService.js'
 
 export const FileService = {
+  async ensureSchema(db) {
+    await WorkspaceService.ensureSchema(db)
+  },
+
   /**
    * 生成唯一文件名
    */
@@ -60,11 +65,13 @@ export const FileService = {
   /**
    * 保存文件记录到数据库
    */
-  async saveFileRecord(db, { fileName, r2Key, fileSize, mimeType, deviceId }) {
+  async saveFileRecord(db, { fileName, r2Key, fileSize, mimeType, deviceId, workspaceId = DEFAULT_WORKSPACE_ID }) {
+    await this.ensureSchema(db)
+
     const result = await DBService.execute(db,
-      `INSERT INTO files (original_name, file_name, file_size, mime_type, r2_key, upload_device_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [fileName, r2Key, fileSize, mimeType || 'application/octet-stream', r2Key, deviceId]
+      `INSERT INTO files (workspace_id, original_name, file_name, file_size, mime_type, r2_key, upload_device_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [workspaceId || DEFAULT_WORKSPACE_ID, fileName, r2Key, fileSize, mimeType || 'application/octet-stream', r2Key, deviceId]
     )
     return { id: result.meta.last_row_id }
   },
@@ -72,44 +79,61 @@ export const FileService = {
   /**
    * 根据r2Key获取文件信息
    */
-  async getFileByR2Key(db, r2Key) {
+  async getFileByR2Key(db, r2Key, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+
     return await DBService.queryFirst(db,
-      `SELECT * FROM files WHERE r2_key = ?`,
-      [r2Key]
+      `SELECT * FROM files WHERE r2_key = ? AND COALESCE(workspace_id, ?) = ?`,
+      [r2Key, DEFAULT_WORKSPACE_ID, workspaceId || DEFAULT_WORKSPACE_ID]
     )
   },
 
   /**
    * 更新下载计数
    */
-  async incrementDownloadCount(db, r2Key) {
+  async incrementDownloadCount(db, r2Key, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+
     await DBService.execute(db,
-      `UPDATE files SET download_count = download_count + 1 WHERE r2_key = ?`,
-      [r2Key]
+      `UPDATE files SET download_count = download_count + 1 WHERE r2_key = ? AND COALESCE(workspace_id, ?) = ?`,
+      [r2Key, DEFAULT_WORKSPACE_ID, workspaceId || DEFAULT_WORKSPACE_ID]
     )
   },
 
   /**
    * 获取所有文件的R2密钥
    */
-  async getAllR2Keys(db) {
-    const result = await DBService.queryAll(db, `SELECT r2_key FROM files`)
+  async getAllR2Keys(db, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+
+    const result = await DBService.queryAll(db, `SELECT r2_key FROM files WHERE COALESCE(workspace_id, ?) = ?`, [
+      DEFAULT_WORKSPACE_ID,
+      workspaceId || DEFAULT_WORKSPACE_ID,
+    ])
     return (result.results || []).map(r => r.r2_key)
   },
 
   /**
    * 删除所有文件记录
    */
-  async deleteAll(db) {
-    await DBService.execute(db, `DELETE FROM files`)
+  async deleteAll(db, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+
+    await DBService.execute(db, `DELETE FROM files WHERE COALESCE(workspace_id, ?) = ?`, [
+      DEFAULT_WORKSPACE_ID,
+      workspaceId || DEFAULT_WORKSPACE_ID,
+    ])
   },
 
   /**
    * 统计文件数量与总大小
    */
-  async getStats(db) {
+  async getStats(db, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+
     return await DBService.queryFirst(db,
-      `SELECT COUNT(*) as count, COALESCE(SUM(file_size), 0) as totalSize FROM files`
+      `SELECT COUNT(*) as count, COALESCE(SUM(file_size), 0) as totalSize FROM files WHERE COALESCE(workspace_id, ?) = ?`,
+      [DEFAULT_WORKSPACE_ID, workspaceId || DEFAULT_WORKSPACE_ID]
     )
   }
 }

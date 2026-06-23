@@ -1,5 +1,6 @@
 ﻿import { Hono } from 'hono'
 import { MessageService } from '../services/messageService.js'
+import { DEFAULT_WORKSPACE_ID, WorkspaceService } from '../services/workspaceService.js'
 
 const search = new Hono()
 
@@ -118,6 +119,7 @@ search.get('/', async (c) => {
   try {
     const { DB } = c.env
     await MessageService.ensureSchema(DB)
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     const query = c.req.query('q')
     const type = c.req.query('type') || 'all'
@@ -185,7 +187,8 @@ search.get('/', async (c) => {
       LEFT JOIN files f ON m.file_id = f.id
       LEFT JOIN devices d ON m.device_id = d.id
     `
-    const allConditions = [`(${searchConditions.join(' OR ')})`, ...filterConditions]
+    const allConditions = [`COALESCE(m.workspace_id, ?) = ?`, `(${searchConditions.join(' OR ')})`, ...filterConditions]
+    params.unshift(DEFAULT_WORKSPACE_ID, workspaceId)
     const whereClause = `WHERE ${allConditions.join(' AND ')}`
     const selectFields = `
       m.id, m.type, m.content, m.device_id, m.device_info, d.name AS device_name, m.timestamp,
@@ -218,7 +221,9 @@ search.get('/', async (c) => {
 search.get('/suggestions', async (c) => {
   try {
     const { DB } = c.env
+    await MessageService.ensureSchema(DB)
     const query = c.req.query('q')
+    const workspaceId = await WorkspaceService.resolveRequestWorkspaceId(c)
 
     if (!query || query.trim().length < 2) {
       return c.json({ success: true, data: [] })
@@ -228,12 +233,12 @@ search.get('/suggestions', async (c) => {
     const stmt = DB.prepare(`
       SELECT DISTINCT substr(m.content, 1, 50) as suggestion
       FROM messages m
-      WHERE m.type = 'text' AND m.content LIKE ?
+      WHERE COALESCE(m.workspace_id, ?) = ? AND m.type = 'text' AND m.content LIKE ?
       ORDER BY m.timestamp DESC
       LIMIT 10
     `)
 
-    const result = await stmt.bind(`%${query}%`).all()
+    const result = await stmt.bind(DEFAULT_WORKSPACE_ID, workspaceId, `%${query}%`).all()
 
     return c.json({
       success: true,

@@ -3,6 +3,7 @@
  */
 
 import { DBService } from './database.js'
+import { DEFAULT_WORKSPACE_ID, WorkspaceService } from './workspaceService.js'
 
 const MAX_DEVICE_INFO_FIELD_LENGTH = 160
 const MAX_DEVICE_INFO_USER_AGENT_LENGTH = 240
@@ -63,21 +64,24 @@ export const MessageService = {
    * 确保消息表结构为当前版本
    */
   async ensureSchema(db) {
+    await WorkspaceService.ensureSchema(db)
     await ensureDeviceInfoColumn(db)
   },
 
   /**
    * 获取消息列表（支持分页）
    */
-  async getMessages(db, { limit = 50, offset = 0 } = {}) {
+  async getMessages(db, { limit = 50, offset = 0, workspaceId = DEFAULT_WORKSPACE_ID } = {}) {
     await this.ensureSchema(db)
 
     const limitNum = Math.min(Math.max(1, parseInt(limit)), 200)
     const offsetNum = Math.max(0, parseInt(offset))
+    const currentWorkspaceId = workspaceId || DEFAULT_WORKSPACE_ID
 
     const sql = `
       SELECT
         m.id,
+        m.workspace_id,
         m.type,
         m.content,
         m.device_id,
@@ -92,15 +96,16 @@ export const MessageService = {
       FROM messages m
       LEFT JOIN files f ON m.file_id = f.id
       LEFT JOIN devices d ON m.device_id = d.id
+      WHERE m.workspace_id = ?
       ORDER BY m.timestamp ASC
       LIMIT ? OFFSET ?
     `
 
-    const countSql = `SELECT COUNT(*) as total FROM messages`
+    const countSql = `SELECT COUNT(*) as total FROM messages WHERE workspace_id = ?`
 
     const [dataResult, countResult] = await Promise.all([
-      DBService.queryAll(db, sql, [limitNum, offsetNum]),
-      DBService.queryFirst(db, countSql)
+      DBService.queryAll(db, sql, [currentWorkspaceId, limitNum, offsetNum]),
+      DBService.queryFirst(db, countSql, [currentWorkspaceId])
     ])
 
     return {
@@ -114,12 +119,12 @@ export const MessageService = {
   /**
    * 创建文本消息
    */
-  async createMessage(db, { type, content, deviceId, deviceInfo = null }) {
+  async createMessage(db, { type, content, deviceId, deviceInfo = null, workspaceId = DEFAULT_WORKSPACE_ID }) {
     await this.ensureSchema(db)
 
     const result = await DBService.execute(db,
-      `INSERT INTO messages (type, content, device_id, device_info) VALUES (?, ?, ?, ?)`,
-      [type || 'text', content, deviceId, normalizeDeviceInfo(deviceInfo)]
+      `INSERT INTO messages (workspace_id, type, content, device_id, device_info) VALUES (?, ?, ?, ?, ?)`,
+      [workspaceId || DEFAULT_WORKSPACE_ID, type || 'text', content, deviceId, normalizeDeviceInfo(deviceInfo)]
     )
     return { id: result.meta.last_row_id }
   },
@@ -127,12 +132,12 @@ export const MessageService = {
   /**
    * 创建文件消息
    */
-  async createFileMessage(db, fileId, deviceId, deviceInfo = null) {
+  async createFileMessage(db, fileId, deviceId, deviceInfo = null, workspaceId = DEFAULT_WORKSPACE_ID) {
     await this.ensureSchema(db)
 
     const result = await DBService.execute(db,
-      `INSERT INTO messages (type, file_id, device_id, device_info) VALUES (?, ?, ?, ?)`,
-      ['file', fileId, deviceId, normalizeDeviceInfo(deviceInfo)]
+      `INSERT INTO messages (workspace_id, type, file_id, device_id, device_info) VALUES (?, ?, ?, ?, ?)`,
+      [workspaceId || DEFAULT_WORKSPACE_ID, 'file', fileId, deviceId, normalizeDeviceInfo(deviceInfo)]
     )
     return { id: result.meta.last_row_id }
   },
@@ -140,7 +145,7 @@ export const MessageService = {
   /**
    * 创建AI消息
    */
-  async createAIMessage(db, { content, deviceId, type = 'ai_response', deviceInfo = null }) {
+  async createAIMessage(db, { content, deviceId, type = 'ai_response', deviceInfo = null, workspaceId = DEFAULT_WORKSPACE_ID }) {
     await this.ensureSchema(db)
 
     const prefix = type === 'ai_response' ? '[AI] ' :
@@ -148,11 +153,12 @@ export const MessageService = {
     const messageContent = prefix + content
 
     const result = await DBService.execute(db,
-      `INSERT INTO messages (type, content, device_id, device_info) VALUES (?, ?, ?, ?)`,
-      ['text', messageContent, deviceId, normalizeDeviceInfo(deviceInfo)]
+      `INSERT INTO messages (workspace_id, type, content, device_id, device_info) VALUES (?, ?, ?, ?, ?)`,
+      [workspaceId || DEFAULT_WORKSPACE_ID, 'text', messageContent, deviceId, normalizeDeviceInfo(deviceInfo)]
     )
     return {
       id: result.meta.last_row_id,
+      workspace_id: workspaceId || DEFAULT_WORKSPACE_ID,
       type: 'text',
       content: messageContent,
       device_id: deviceId,
@@ -165,38 +171,55 @@ export const MessageService = {
   /**
    * 获取新消息数量（用于轮询）
    */
-  async getNewMessageCount(db, lastMessageId = '0') {
-    const result = await DBService.queryFirst(db,
-      `SELECT COUNT(*) as count FROM messages WHERE id > ?`,
-      [lastMessageId]
-    )
+  async getNewMessageCount(db, lastMessageId = '0', workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+    const result = workspaceId === null
+      ? await DBService.queryFirst(db,
+        `SELECT COUNT(*) as count FROM messages WHERE id > ?`,
+        [lastMessageId]
+      )
+      : await DBService.queryFirst(db,
+        `SELECT COUNT(*) as count FROM messages WHERE workspace_id = ? AND id > ?`,
+        [workspaceId || DEFAULT_WORKSPACE_ID, lastMessageId]
+      )
     return result?.count || 0
   },
 
   /**
    * 获取最近消息数（用于SSE检查）
    */
-  async getRecentMessageCount(db, seconds = 10) {
-    const result = await DBService.queryFirst(db,
-      `SELECT COUNT(*) as count FROM messages WHERE timestamp > datetime('now', ? || ' seconds')`,
-      [`-${seconds}`]
-    )
+  async getRecentMessageCount(db, seconds = 10, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+    const result = workspaceId === null
+      ? await DBService.queryFirst(db,
+        `SELECT COUNT(*) as count FROM messages WHERE timestamp > datetime('now', ? || ' seconds')`,
+        [`-${seconds}`]
+      )
+      : await DBService.queryFirst(db,
+        `SELECT COUNT(*) as count FROM messages WHERE workspace_id = ? AND timestamp > datetime('now', ? || ' seconds')`,
+        [workspaceId || DEFAULT_WORKSPACE_ID, `-${seconds}`]
+      )
     return result?.count || 0
   },
 
   /**
    * 删除所有消息
    */
-  async deleteAll(db) {
-    await DBService.execute(db, `DELETE FROM messages`)
+  async deleteAll(db, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
+    await DBService.execute(db, `DELETE FROM messages WHERE workspace_id = ?`, [
+      workspaceId || DEFAULT_WORKSPACE_ID,
+    ])
   },
 
   /**
    * 统计消息数量
    */
-  async countAll(db) {
+  async countAll(db, workspaceId = DEFAULT_WORKSPACE_ID) {
+    await this.ensureSchema(db)
     const result = await DBService.queryFirst(db,
-      `SELECT COUNT(*) as count FROM messages`
+      `SELECT COUNT(*) as count FROM messages WHERE workspace_id = ?`,
+      [workspaceId || DEFAULT_WORKSPACE_ID]
     )
     return result?.count || 0
   }

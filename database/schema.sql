@@ -1,8 +1,24 @@
 -- 微信文件传输助手数据库结构
 
+-- 工作区表
+CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    color TEXT,
+    sort_order INTEGER DEFAULT 0,
+    is_default INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO workspaces (id, name, slug, color, sort_order, is_default) VALUES
+('default', '默认', 'default', '#07c160', 0, 1);
+
 -- 消息表
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT DEFAULT 'default',
     type TEXT NOT NULL CHECK (type IN ('text', 'file')), -- 消息类型：文本或文件
     content TEXT, -- 文本消息内容
     file_id INTEGER, -- 关联的文件ID（如果是文件消息）
@@ -20,6 +36,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- 文件表
 CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT DEFAULT 'default',
     original_name TEXT NOT NULL, -- 原始文件名
     file_name TEXT NOT NULL, -- 存储在R2中的文件名
     file_size INTEGER NOT NULL, -- 文件大小（字节）
@@ -34,6 +51,7 @@ CREATE TABLE IF NOT EXISTS files (
 -- 设备表
 CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY, -- 设备唯一标识
+    workspace_id TEXT DEFAULT 'default',
     name TEXT, -- 设备名称
     last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -49,6 +67,6 @@ CREATE INDEX IF NOT EXISTS idx_files_upload_device ON files(upload_device_id);
 CREATE INDEX IF NOT EXISTS idx_devices_last_active ON devices(last_active DESC);
 
 -- 插入默认设备（可选）
-INSERT OR IGNORE INTO devices (id, name) VALUES 
+INSERT OR IGNORE INTO devices (id, name) VALUES
 ('web-default', 'Web浏览器'),
 ('mobile-default', '移动设备');
