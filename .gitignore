@@ -12,4 +12,5 @@ npm-debug.log*
 .DS_Store
 
 .firecrawl/
+doc/
 SELFHOST_SERVER4_PLAN.md
