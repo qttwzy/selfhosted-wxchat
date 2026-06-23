@@ -54,6 +54,18 @@ const CONFIG = {
     MESSAGE: {
         DEVICE_INFO_ENABLED: false
     },
+
+    // 时区配置
+    TIMEZONE: {
+        SERVER: 'UTC',
+        DEFAULT: 'UTC',
+        ACTIVE: 'UTC',
+        MODE: 'server',
+        CUSTOM: '',
+        ALLOW_CLIENT_OVERRIDE: true,
+        MODE_STORAGE_KEY: 'wxchat.timezone.mode',
+        VALUE_STORAGE_KEY: 'wxchat.timezone.value'
+    },
     
     // 消息类型
     MESSAGE_TYPES: {
@@ -308,7 +320,7 @@ async function loadRuntimeConfig() {
         const result = await response.json();
         if (!result.success || !result.data) return;
 
-        const { ai, imageGen, file, message } = result.data;
+        const { ai, imageGen, file, message, timezone } = result.data;
         if (ai) {
             CONFIG.AI.ENABLED = !!ai.enabled;
             CONFIG.AI.MODEL = ai.model || CONFIG.AI.MODEL;
@@ -330,6 +342,14 @@ async function loadRuntimeConfig() {
         }
         if (message) {
             CONFIG.MESSAGE.DEVICE_INFO_ENABLED = !!message.deviceInfoEnabled;
+        }
+        if (timezone) {
+            CONFIG.TIMEZONE.SERVER = timezone.serverTimezone || CONFIG.TIMEZONE.SERVER;
+            CONFIG.TIMEZONE.DEFAULT = timezone.defaultTimezone || CONFIG.TIMEZONE.DEFAULT || CONFIG.TIMEZONE.SERVER;
+            CONFIG.TIMEZONE.ALLOW_CLIENT_OVERRIDE = timezone.allowClientTimezoneOverride !== false;
+        }
+        if (window.Utils && typeof Utils.applyTimeZonePreference === 'function') {
+            Utils.applyTimeZonePreference();
         }
     } catch (error) {
         console.warn('[Config] 运行时配置加载失败，使用默认配置:', error.message);

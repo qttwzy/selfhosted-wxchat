@@ -70,6 +70,17 @@ MESSAGE_DEVICE_INFO_ENABLED=true
 
 启用后，新发送的文本、文件消息会保存设备名称、类型、系统、浏览器、屏幕等轻量信息；历史消息不会自动补齐。
 
+## 时区
+
+自部署版默认读取运行机器的时区。也可以显式指定实例默认显示时区：
+
+```env
+APP_TIMEZONE=Asia/Shanghai
+ALLOW_CLIENT_TIMEZONE_OVERRIDE=true
+```
+
+`APP_TIMEZONE` 留空时使用部署机器时区；`ALLOW_CLIENT_TIMEZONE_OVERRIDE=false` 时，前端不能切换到浏览器或自定义时区。
+
 ## Nginx / OpenResty 反代
 
 建议反代目标：

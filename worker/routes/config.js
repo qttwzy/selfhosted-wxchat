@@ -2,7 +2,27 @@ import { Hono } from 'hono'
 
 const config = new Hono()
 
+function readBool(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback
+  if (typeof value === 'boolean') return value
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase())
+}
+
+function getRuntimeTimezone(env) {
+  const fallback = 'UTC'
+  const timezone = env.APP_TIMEZONE || env.SERVER_TIMEZONE || fallback
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date())
+    return timezone
+  } catch {
+    return fallback
+  }
+}
+
 config.get('/', (c) => {
+  const serverTimezone = c.env.SERVER_TIMEZONE || getRuntimeTimezone(c.env)
+  const defaultTimezone = getRuntimeTimezone(c.env)
+
   return c.json({
     success: true,
     data: {
@@ -25,7 +45,12 @@ config.get('/', (c) => {
         maxSizeMb: Number.parseInt(c.env.MAX_FILE_SIZE_MB || '100', 10),
       },
       message: {
-        deviceInfoEnabled: c.env.MESSAGE_DEVICE_INFO_ENABLED === true || c.env.MESSAGE_DEVICE_INFO_ENABLED === 'true',
+        deviceInfoEnabled: readBool(c.env.MESSAGE_DEVICE_INFO_ENABLED, false),
+      },
+      timezone: {
+        serverTimezone,
+        defaultTimezone,
+        allowClientTimezoneOverride: readBool(c.env.ALLOW_CLIENT_TIMEZONE_OVERRIDE, true),
       },
     },
   })
