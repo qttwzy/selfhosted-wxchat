@@ -6,7 +6,7 @@ const MessageRenderer = {
     createMessageElement(message, currentDeviceId) {
         const isOwn = message.device_id === currentDeviceId;
         const time = Utils.formatTime(message.timestamp);
-        const deviceName = isOwn ? '我的设备' : '其他设备';
+        const deviceMeta = this.getDeviceMeta(message, isOwn);
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${isOwn ? 'own' : 'other'}`;
@@ -14,16 +14,16 @@ const MessageRenderer = {
         messageDiv.dataset.timestamp = message.timestamp;
 
         if (message.type === CONFIG.MESSAGE_TYPES.TEXT) {
-            messageDiv.innerHTML = this.renderTextMessageContent(message, deviceName, time);
+            messageDiv.innerHTML = this.renderTextMessageContent(message, deviceMeta, time);
         } else if (message.type === CONFIG.MESSAGE_TYPES.FILE) {
-            messageDiv.innerHTML = this.renderFileMessageContent(message, deviceName, time);
+            messageDiv.innerHTML = this.renderFileMessageContent(message, deviceMeta, time);
         }
 
         return messageDiv;
     },
 
     // 渲染文本消息内容
-    renderTextMessageContent(message, deviceName, time) {
+    renderTextMessageContent(message, deviceMeta, time) {
         const hasMarkdown = Utils.markdown.hasMarkdownSyntax(message.content);
         const messageId = `msg-${message.id}`;
 
@@ -37,11 +37,11 @@ const MessageRenderer = {
             ? `<button class="markdown-toggle" onclick="MarkdownHandler.toggleView('${messageId}')" title="切换源码/渲染视图">📝</button>`
             : '';
 
-        return `<div class="message-content"><div class="${textMessageClass}" id="${messageId}" data-original="${this.escapeHtml(message.content)}" data-rendered="${displayContent.replace(/"/g, '&quot;')}" data-is-rendered="${hasMarkdown ? 'true' : 'false'}">${displayContent}${toggleButton}</div></div><div class="message-meta"><span>${deviceName}</span> <span class="message-time">${time}</span></div>`;
+        return `<div class="message-content"><div class="${textMessageClass}" id="${messageId}" data-original="${this.escapeHtml(message.content)}" data-rendered="${displayContent.replace(/"/g, '&quot;')}" data-is-rendered="${hasMarkdown ? 'true' : 'false'}">${displayContent}${toggleButton}</div></div>${this.renderMessageMeta(deviceMeta, time)}`;
     },
 
     // 渲染文件消息内容
-    renderFileMessageContent(message, deviceName, time) {
+    renderFileMessageContent(message, deviceMeta, time) {
         const fileIcon = Utils.getFileIcon(message.mime_type, message.original_name);
         const fileSize = Utils.formatFileSize(message.file_size);
         const isImage = Utils.isImageFile(message.mime_type);
@@ -54,7 +54,56 @@ const MessageRenderer = {
             message._needsImageLoad = { r2Key: message.r2_key, safeId: safeId };
         }
 
-        return `<div class="message-content"><div class="file-message"><div class="file-info"><div class="file-icon">${fileIcon}</div><div class="file-details"><div class="file-name">${this.escapeHtml(message.original_name)}</div><div class="file-size">${fileSize}</div></div><button class="download-btn" onclick="API.downloadFile('${message.r2_key}', '${this.escapeHtml(message.original_name)}')">⬇️ 下载</button></div>${imagePreview}</div></div><div class="message-meta"><span>${deviceName}</span> <span class="message-time">${time}</span></div>`;
+        return `<div class="message-content"><div class="file-message"><div class="file-info"><div class="file-icon">${fileIcon}</div><div class="file-details"><div class="file-name">${this.escapeHtml(message.original_name)}</div><div class="file-size">${fileSize}</div></div><button class="download-btn" onclick="API.downloadFile('${message.r2_key}', '${this.escapeHtml(message.original_name)}')">⬇️ 下载</button></div>${imagePreview}</div></div>${this.renderMessageMeta(deviceMeta, time)}`;
+    },
+
+    // 生成消息设备元信息
+    getDeviceMeta(message, isOwn) {
+        const fallbackLabel = isOwn ? '我的设备' : '其他设备';
+        const info = this.parseDeviceInfo(message.device_info);
+        const snapshotName = info?.name || [info?.os, info?.browser].filter(Boolean).join(' ');
+
+        return {
+            label: snapshotName || fallbackLabel,
+            title: snapshotName ? this.createDeviceTitle(info) : ''
+        };
+    },
+
+    // 渲染消息元信息
+    renderMessageMeta(deviceMeta, time) {
+        const title = deviceMeta.title ? ` title="${this.escapeAttribute(deviceMeta.title)}"` : '';
+        const device = deviceMeta.label
+            ? `<span class="message-device"${title}>${this.escapeHtml(deviceMeta.label)}</span> `
+            : '';
+        return `<div class="message-meta">${device}<span class="message-time">${time}</span></div>`;
+    },
+
+    // 解析设备信息快照
+    parseDeviceInfo(deviceInfo) {
+        if (!deviceInfo) return null;
+        if (typeof deviceInfo === 'object') return deviceInfo;
+        try {
+            const parsed = JSON.parse(deviceInfo);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+            return null;
+        }
+    },
+
+    // 生成悬停展示的设备详情
+    createDeviceTitle(info) {
+        const lines = [];
+        if (info?.name) lines.push(`设备: ${info.name}`);
+        if (info?.type) lines.push(`类型: ${info.type}`);
+        if (info?.os) lines.push(`系统: ${info.os}`);
+        if (info?.browser) lines.push(`浏览器: ${info.browser}`);
+        if (info?.platform) lines.push(`平台: ${info.platform}`);
+        if (info?.screen?.width && info?.screen?.height) {
+            lines.push(`屏幕: ${info.screen.width}x${info.screen.height}`);
+        }
+        if (info?.timezone) lines.push(`时区: ${info.timezone}`);
+        if (info?.capturedAt) lines.push(`记录时间: ${Utils.formatTime(info.capturedAt)}`);
+        return lines.join('\n');
     },
 
     // 转义HTML
@@ -64,6 +113,11 @@ const MessageRenderer = {
         return div.innerHTML;
     },
 
+    // 转义属性值
+    escapeAttribute(text) {
+        return this.escapeHtml(text).replace(/"/g, '&quot;');
+    },
+
     // 创建安全的ID（移除特殊字符）
     createSafeId(str) {
         return str.replace(/[^a-zA-Z0-9-_]/g, '');
@@ -71,9 +125,9 @@ const MessageRenderer = {
 
     // 更新消息时间显示格式
     updateMessageTime(messageElement, timestamp) {
-        const timeElement = messageElement.querySelector('.message-meta span:last-child');
+        const timeElement = messageElement.querySelector('.message-time');
         if (timeElement) {
-            timeElement.innerHTML = `<span class="message-time">${Utils.formatTime(timestamp)}</span>`;
+            timeElement.textContent = Utils.formatTime(timestamp);
         }
     },
 
