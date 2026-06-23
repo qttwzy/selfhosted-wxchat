@@ -18,14 +18,14 @@
 1. 消息堆叠与设备配色。
 2. 时区配置与显示修正。
 3. 多工作区 MVP。
-4. 多账号与工作区成员权限。
+4. 多账号、工作区成员权限与临时访客。
 
 原因：
 
 - 消息堆叠和设备配色主要是前端渲染层改造，收益明显，风险较低。
 - 时区问题会影响消息展示、搜索时间范围和实时判断，应在多工作区前统一口径。
 - 多工作区会改数据模型和 API 查询边界，但可以继续沿用当前单密码登录。
-- 多账号会触碰认证、权限、邀请、成员关系，应该在工作区模型稳定后再做。
+- 多账号会触碰认证、权限、邀请、成员关系和陌生设备临时访问，应该在工作区模型稳定后再做。
 
 ## 阶段一：消息堆叠与设备配色
 
@@ -322,11 +322,11 @@ CREATE INDEX idx_devices_workspace_active ON devices(workspace_id, last_active D
 - 文件下载需要校验工作区上下文，否则可能跨工作区访问文件。
 - 实时轮询按“最近消息数”判断，需要加工作区条件。
 
-## 阶段四：多账号与成员权限
+## 阶段四：多账号、成员权限与临时访客
 
 ### 目标
 
-在多工作区基础上增加真正的用户体系，让不同人登录后只能访问自己有权限的工作区。
+在多工作区基础上增加真正的用户体系，并支持“已登录设备生成临时访问码，陌生设备用短时码进入指定工作区”的流程，让文件传输助手式的临时传输也纳入统一权限模型。
 
 ### 数据模型
 
@@ -349,6 +349,33 @@ CREATE TABLE workspace_members (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (workspace_id, user_id)
 );
+
+CREATE TABLE workspace_access_codes (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    code_hash TEXT NOT NULL UNIQUE,
+    created_by_user_id TEXT,
+    created_by_device_id TEXT,
+    purpose TEXT NOT NULL DEFAULT 'temporary_transfer',
+    max_uses INTEGER DEFAULT 1,
+    used_count INTEGER DEFAULT 0,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE temp_sessions (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    access_code_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    expires_at DATETIME NOT NULL,
+    last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 角色：
@@ -358,15 +385,33 @@ CREATE TABLE workspace_members (
 - `member`：读写消息和文件。
 - `viewer`：只读。
 
+临时访客：
+
+- 临时访问码由已登录设备创建，默认绑定当前工作区。
+- 临时会话只允许访问一个指定工作区，不参与长期成员关系。
+- 临时会话应支持超时失效、手动撤销和单设备限制。
+
 ### 认证改造
 
 当前认证是单密码登录，JWT payload 只有基础访问类型。多账号阶段需要：
 
 - 登录接口接受 `username/password`。
 - JWT payload 增加 `userId`、`username`。
-- 中间件解析用户身份并加载可访问工作区。
-- 所有工作区接口检查成员权限。
+- 新增临时访问接口：`POST /api/auth/temp/create`、`POST /api/auth/temp/join`、`POST /api/auth/temp/revoke`。
+- JWT payload 增加 `sessionType`、`workspaceId`、`sessionId`、`scopes`，临时会话和长期账号走同一套校验入口。
+- 中间件解析认证上下文并锁定可访问工作区，前端传入的 `workspaceId` 只能作为提示，不能作为权限来源。
+- 所有工作区接口检查成员权限或临时会话权限。
 - 保留可选兼容模式：`SINGLE_PASSWORD_MODE=true`。
+
+### 临时访客访问
+
+推荐流程：
+
+1. 已登录设备在当前工作区创建临时访问码，可展示为二维码或短码。
+2. 陌生设备输入短码或扫码兑换，换取仅限当前工作区的临时 token。
+3. 临时 token 到期、撤销或达到使用上限后立即失效。
+4. 临时设备只能发消息、传文件、接收实时同步，不能切换工作区、创建工作区或管理成员。
+5. 若要更接近官方文件传输助手体验，可以默认把临时码和临时工作区一一绑定，必要时由创建方先自动生成一个专用临时工作区。
 
 ### 验收标准
 
@@ -374,15 +419,20 @@ CREATE TABLE workspace_members (
 - 用户 B 无法通过修改 `workspaceId` 访问 A 的工作区。
 - owner 可以添加、移除成员。
 - viewer 不能发送消息或上传文件。
+- 已登录设备可以创建临时访问码。
+- 陌生设备可兑换临时码并进入指定临时工作区。
+- 临时会话到期或撤销后立即失效。
+- 临时设备不能通过修改 `workspaceId` 访问其他工作区。
 
 ### 复杂度
 
-预计 `5-10 天`。
+预计 `6-12 天`。
 
 主要风险：
 
 - 密码存储和迁移必须谨慎，不能继续明文密码。
 - JWT 过期、登出、权限变化后的旧 token 行为需要定义。
+- 临时码、临时 token 和工作区绑定关系必须强约束，避免通过请求头伪造访问范围。
 - 多账号会显著增加 UI 和测试范围。
 
 ## 测试计划
@@ -394,6 +444,8 @@ CREATE TABLE workspace_members (
 - 时区格式化：UTC、Asia/Shanghai、America/Los_Angeles。
 - 工作区查询过滤：消息、文件、设备、搜索。
 - 权限过滤：成员、非成员、只读成员。
+- 临时访问码生成、兑换、过期、撤销。
+- 临时会话的工作区隔离和权限收口。
 
 ### 浏览器验证
 
@@ -453,6 +505,8 @@ CREATE TABLE workspace_members (
 - 用户表。
 - 登录改造。
 - 工作区成员权限。
+- 临时访客访问码。
+- 临时会话到期与撤销。
 - 管理入口。
 
 预计时间：`5-10 天`。

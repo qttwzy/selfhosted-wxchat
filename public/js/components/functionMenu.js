@@ -2,7 +2,7 @@
 // 提供Web端适用的功能选项界面框架
 
 const FunctionMenu = {
-    STYLE_VERSION: '2.2.4',
+    STYLE_VERSION: '2.2.8',
     timeZoneOptions: [],
 
     // 菜单配置 - 微信风格

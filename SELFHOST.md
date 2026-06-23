@@ -36,7 +36,7 @@ openssl rand -base64 32
 然后编辑 `.env`，至少修改：
 
 ```env
-ACCESS_PASSWORD=
+ACCESS_PASSWORD=wxchat2024
 JWT_SECRET=
 PUBLIC_BASE_URL=
 ```
