@@ -340,7 +340,11 @@ const Auth = {
             this.state.refreshTimer = null;
         }
 
-        // 如果不在登录页面，跳转到登录页面
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            const channel = new MessageChannel();
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' }, [channel.port2]);
+        }
+
         if (!window.location.pathname.includes('login.html')) {
             window.location.href = '/login.html';
         }

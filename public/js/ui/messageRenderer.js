@@ -18,6 +18,7 @@ const MessageRenderer = {
             messageDiv.innerHTML = this.renderFileMessageContent(message, deviceMeta, time);
         }
 
+        this.bindSafeActions(messageDiv);
         this.applyMessagePresentation(messageDiv, message, currentDeviceId);
         return messageDiv;
     },
@@ -57,7 +58,7 @@ const MessageRenderer = {
 
         const textMessageClass = hasMarkdown ? 'text-message markdown-rendered' : 'text-message';
         const toggleButton = hasMarkdown
-            ? `<button class="markdown-toggle" onclick="MarkdownHandler.toggleView('${messageId}')" title="切换源码/渲染视图">📝</button>`
+            ? `<button class="markdown-toggle" data-action="toggle-markdown" data-message-id="${this.escapeHtml(messageId)}" title="切换源码/渲染视图">📝</button>`
             : '';
 
         return `<div class="message-content"><div class="${textMessageClass}" id="${messageId}" data-original="${this.escapeHtml(message.content)}" data-rendered="${displayContent.replace(/"/g, '&quot;')}" data-is-rendered="${hasMarkdown ? 'true' : 'false'}">${displayContent}${toggleButton}</div></div>${this.renderMessageMeta(deviceMeta, time)}`;
@@ -73,11 +74,11 @@ const MessageRenderer = {
         if (isImage) {
             const safeId = this.createSafeId(message.r2_key);
             const imageId = `img-${safeId}`;
-            imagePreview = `<div class="image-preview" id="preview-${safeId}"><div class="image-loading" id="loading-${safeId}"><div class="loading-spinner">⏳</div><span>加载图片中...</span></div><img id="${imageId}" alt="${this.escapeHtml(message.original_name)}" style="display: none;" /><div class="image-error" id="error-${safeId}" style="display: none;"><span>🖼️ 图片加载失败</span><button onclick="ImageLoader.retry('${message.r2_key}', '${safeId}')" class="retry-btn">重试</button></div></div>`;
+            imagePreview = `<div class="image-preview" id="preview-${safeId}"><div class="image-loading" id="loading-${safeId}"><div class="loading-spinner">⏳</div><span>加载图片中...</span></div><img id="${imageId}" alt="${this.escapeHtml(message.original_name)}" style="display: none;" /><div class="image-error" id="error-${safeId}" style="display: none;"><span>🖼️ 图片加载失败</span><button type="button" class="retry-btn" data-action="retry-image" data-r2-key="${this.escapeHtml(message.r2_key)}" data-safe-id="${this.escapeHtml(safeId)}">重试</button></div></div>`;
             message._needsImageLoad = { r2Key: message.r2_key, safeId: safeId };
         }
 
-        return `<div class="message-content"><div class="file-message"><div class="file-info"><div class="file-icon">${fileIcon}</div><div class="file-details"><div class="file-name">${this.escapeHtml(message.original_name)}</div><div class="file-size">${fileSize}</div></div><button class="download-btn" onclick="API.downloadFile('${message.r2_key}', '${this.escapeHtml(message.original_name)}')">⬇️ 下载</button></div>${imagePreview}</div></div>${this.renderMessageMeta(deviceMeta, time)}`;
+        return `<div class="message-content"><div class="file-message"><div class="file-info"><div class="file-icon">${fileIcon}</div><div class="file-details"><div class="file-name">${this.escapeHtml(message.original_name)}</div><div class="file-size">${fileSize}</div></div><button type="button" class="download-btn" data-action="download-file" data-r2-key="${this.escapeHtml(message.r2_key)}" data-filename="${this.escapeHtml(message.original_name)}">⬇️ 下载</button></div>${imagePreview}</div></div>${this.renderMessageMeta(deviceMeta, time)}`;
     },
 
     // 生成消息设备元信息
@@ -175,5 +176,29 @@ const MessageRenderer = {
 
             metaElement.appendChild(statusSpan);
         }
+    },
+
+    bindSafeActions(messageElement) {
+        messageElement.querySelectorAll('[data-action="toggle-markdown"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (typeof MarkdownHandler !== 'undefined') {
+                    MarkdownHandler.toggleView(button.dataset.messageId);
+                }
+            });
+        });
+        messageElement.querySelectorAll('[data-action="download-file"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (typeof API !== 'undefined') {
+                    API.downloadFile(button.dataset.r2Key, button.dataset.filename);
+                }
+            });
+        });
+        messageElement.querySelectorAll('[data-action="retry-image"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (typeof ImageLoader !== 'undefined') {
+                    ImageLoader.retry(button.dataset.r2Key, button.dataset.safeId);
+                }
+            });
+        });
     }
 };

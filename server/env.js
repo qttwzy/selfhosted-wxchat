@@ -2,6 +2,9 @@ import path from 'node:path'
 import process from 'node:process'
 import fs from 'node:fs'
 import dotenv from 'dotenv'
+import { assertSecureAuth, parseSessionExpireHours } from './security.js'
+
+export { WEAK_ACCESS_PASSWORDS, WEAK_JWT_SECRETS, parseSessionExpireHours, assertSecureAuth } from './security.js'
 
 dotenv.config()
 
@@ -77,17 +80,21 @@ function getConfiguredTimezone() {
 export function loadEnv() {
   const machineTimezone = getMachineTimezone()
   const appTimezone = getConfiguredTimezone()
+  const accessPassword = process.env.ACCESS_PASSWORD || ''
+  const jwtSecret = process.env.JWT_SECRET || ''
+  assertSecureAuth({ accessPassword, jwtSecret })
+
   const env = {
     NODE_ENV: process.env.NODE_ENV || 'development',
     ENVIRONMENT: process.env.NODE_ENV === 'production' ? 'production' : 'development',
-    HOST: process.env.HOST || '0.0.0.0',
+    HOST: process.env.HOST || '127.0.0.1',
     PORT: readInt('PORT', 3000),
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || '',
     DATABASE_PATH: resolvePath(process.env.DATABASE_PATH, './data/wxchat.db'),
     UPLOAD_DIR: resolvePath(process.env.UPLOAD_DIR, './uploads'),
-    ACCESS_PASSWORD: process.env.ACCESS_PASSWORD || 'wxchat2024',
-    JWT_SECRET: process.env.JWT_SECRET || 'change-this-jwt-secret',
-    SESSION_EXPIRE_HOURS: process.env.SESSION_EXPIRE_HOURS || '24',
+    ACCESS_PASSWORD: accessPassword,
+    JWT_SECRET: jwtSecret,
+    SESSION_EXPIRE_HOURS: String(parseSessionExpireHours(process.env.SESSION_EXPIRE_HOURS)),
     MAX_FILE_SIZE_MB: readInt('MAX_FILE_SIZE_MB', 100),
     MESSAGE_DEVICE_INFO_ENABLED: readBool('MESSAGE_DEVICE_INFO_ENABLED', false),
     MESSAGE_GROUP_WINDOW_MINUTES: readInt('MESSAGE_GROUP_WINDOW_MINUTES', 15),
@@ -104,15 +111,6 @@ export function loadEnv() {
     AI_IMAGE_MODEL: process.env.AI_IMAGE_MODEL || '',
     AI_RATE_LIMIT: readInt('AI_RATE_LIMIT', 10),
     IMAGE_RATE_LIMIT: readInt('IMAGE_RATE_LIMIT', 5),
-  }
-
-  if (env.NODE_ENV === 'production') {
-    if (!process.env.ACCESS_PASSWORD) {
-      throw new Error('生产环境必须设置 ACCESS_PASSWORD')
-    }
-    if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-this-jwt-secret') {
-      throw new Error('生产环境必须设置强 JWT_SECRET')
-    }
   }
 
   return env

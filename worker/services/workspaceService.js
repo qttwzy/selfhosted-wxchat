@@ -133,7 +133,8 @@ export const WorkspaceService = {
 
   async getById(db, id) {
     await this.ensureSchema(db)
-    const workspaceId = normalizeId(id) || DEFAULT_WORKSPACE_ID
+    const workspaceId = normalizeId(id)
+    if (!workspaceId) return null
     const row = await DBService.queryFirst(db, `
       SELECT id, name, slug, color, sort_order, is_default, created_at, updated_at
       FROM workspaces
@@ -142,11 +143,25 @@ export const WorkspaceService = {
     return row ? mapWorkspace(row) : null
   },
 
-  async resolveId(db, id) {
+  async resolveId(db, id, { allowDefault = true } = {}) {
     await this.ensureSchema(db)
-    const workspaceId = normalizeId(id) || DEFAULT_WORKSPACE_ID
-    const workspace = await this.getById(db, workspaceId)
-    return workspace?.id || DEFAULT_WORKSPACE_ID
+    const provided = String(id ?? '').trim()
+    if (!provided) {
+      if (!allowDefault) {
+        const error = new Error('工作区不存在')
+        error.status = 404
+        throw error
+      }
+      return DEFAULT_WORKSPACE_ID
+    }
+
+    const workspace = await this.getById(db, provided)
+    if (!workspace) {
+      const error = new Error('工作区不存在')
+      error.status = 404
+      throw error
+    }
+    return workspace.id
   },
 
   async create(db, { name, slug, color } = {}) {
@@ -241,16 +256,21 @@ export const WorkspaceService = {
     return { success: true }
   },
 
+  getProvidedWorkspaceId(c) {
+    const header = c.req.header('X-Workspace-Id')
+    const query = c.req.query('workspaceId')
+    if (header !== undefined && header !== null && String(header).trim() !== '') return header
+    if (query !== undefined && query !== null && String(query).trim() !== '') return query
+    return null
+  },
+
   getWorkspaceIdFromRequest(c) {
-    return normalizeId(
-      c.req.header('X-Workspace-Id') ||
-      c.req.query('workspaceId') ||
-      DEFAULT_WORKSPACE_ID
-    ) || DEFAULT_WORKSPACE_ID
+    return this.getProvidedWorkspaceId(c) || DEFAULT_WORKSPACE_ID
   },
 
   async resolveRequestWorkspaceId(c) {
     const { DB } = c.env
-    return this.resolveId(DB, this.getWorkspaceIdFromRequest(c))
+    const provided = this.getProvidedWorkspaceId(c)
+    return this.resolveId(DB, provided, { allowDefault: provided === null })
   },
 }
