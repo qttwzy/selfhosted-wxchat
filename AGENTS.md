@@ -198,3 +198,10 @@ bash scripts/sync-host-timezone.sh
 - **devices** — `id`、`workspace_id`、`name`、`last_active`
 
 服务层使用惰性 `ensureSchema()` 实现自动迁移（首次访问时创建表/添加列）。
+
+## Issue 驱动开发
+
+- 本仓对应 Plane 项目 `WX`，仓内 `#N` 即 `WX-N`。开工前必须有工作项编号；没有就先要，或用 `idd new` 建。
+- 分支 `<type>/N-<slug>`；提交首行 Conventional Commits，trailer `Refs: #N`。完整规则见 personal-ops `policies/issue-driven-development.md`。
+- 提交和 PR 里禁止 `closes/fixes/resolves #N`；完成状态按统一政策核验合入证据后回写。
+- 完成后回报改动文件路径和提交号；未经允许不用 `--no-verify`，不直接提交到主干。
