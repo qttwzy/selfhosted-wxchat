@@ -75,7 +75,7 @@ Compose 默认只绑定本机端口：
   - 完整的消息历史记录
 
 - 📁 **强大文件传输**
-  - 支持所有文件格式（最大10MB）
+  - 支持所有文件格式（最大100MB，可用 `MAX_FILE_SIZE_MB` 调整）
   - 拖拽上传 + 剪贴板粘贴
   - 多文件批量上传
   - 智能文件类型识别与图标显示
@@ -168,43 +168,37 @@ graph TB
 ├── 📄 package.json           # 📦 项目配置和依赖
 ├── 📄 wrangler.toml          # ⚙️ Cloudflare Workers 配置
 ├── 📄 LICENSE                # 📜 开源许可证 (CC BY-NC-SA 4.0)
-├── 📄 build.js               # 🔨 构建脚本
+├── 📄 build.js               # 🔨 构建脚本（仅文件存在性校验）
+├── 📄 SELFHOST.md            # 🐳 自部署指南
+├── 📄 docker-compose.yml     # 🐳 Docker 单容器编排
 │
 ├── 📁 public/                # 🎨 前端静态资源
 │   ├── 📄 index.html         # 🏠 主页面入口
 │   ├── 📄 login.html         # 🔐 登录页面
 │   ├── 📄 manifest.json      # 📱 PWA应用清单
 │   ├── 📄 sw.js              # ⚙️ Service Worker
-│   │
-│   ├── 📁 css/               # 🎨 样式文件系统
-│   │   ├── 📄 reset.css      # 🔄 CSS重置 + 字体优化
-│   │   ├── 📄 main.css       # 🎯 主布局 + 动画效果
-│   │   ├── 📄 components.css # 🧩 组件样式 + WeChat风格
-│   │   ├── 📄 responsive.css # 📱 响应式设计 + 移动优化
-│   │   └── 📄 auth.css       # 🔐 登录页面样式
-│   │
-│   ├── 📁 js/                # ⚡ JavaScript模块系统
-│   │   ├── 📄 config.js      # ⚙️ 应用配置中心
-│   │   ├── 📄 utils.js       # 🛠️ 工具函数库
-│   │   ├── 📄 auth.js        # 🔐 身份验证模块
-│   │   ├── 📄 api.js         # 🌐 API接口封装
-│   │   ├── 📄 ui.js          # 🎨 UI操作管理
-│   │   ├── 📄 fileUpload.js  # 📁 文件上传处理
-│   │   ├── 📄 messageHandler.js # 💬 消息处理逻辑
-│   │   ├── 📄 realtime.js    # 🔄 实时通信管理
-│   │   ├── 📄 pwa.js         # 📱 PWA功能管理
-│   │   └── 📄 app.js         # 🚀 应用主入口
-│   │
-│   └── 📁 icons/             # 📱 PWA应用图标
-│       ├── 📄 icon.svg       # 🎨 源图标文件
-│       ├── 📄 icon-*.png     # 📱 各尺寸PNG图标
-│       └── 📄 README.md      # 📖 图标生成指南
+│   ├── 📁 css/               # 样式（variables、layout、messages、modals、input、mobile、auth-page、ai-chat、base）
+│   ├── 📁 js/                # ⚡ JavaScript模块（config、utils、auth、api、ui、fileUpload、messageHandler、realtime、pwa、workspaces、app）
+│   │   ├── 📁 ai/            # AI 聊天模块
+│   │   ├── 📁 imageGen/      # 图片生成模块
+│   │   ├── 📁 search/        # 搜索模块
+│   │   ├── 📁 ui/            # UI 子模块（messageRenderer、markdownHandler 等）
+│   │   └── 📁 components/    # UI 组件
+│   └── 📁 icons/             # 📱 PWA 图标（ios、android、windows11）
 │
-├── 📁 worker/                # 🔧 后端服务
-│   └── 📄 index.js           # 🌐 Hono服务器 + RESTful API
+├── 📁 worker/                # 🔧 共享 Hono 应用（Cloudflare 与自托管共用）
+│   ├── 📄 app.js             # 应用工厂（注册全部路由/中间件）
+│   ├── 📄 auth.js            # JWT 认证
+│   ├── 📄 auth-policy.js     # 公开路径与 query token 策略
+│   ├── 📄 index.js           # Cloudflare Workers 入口
+│   ├── 📁 routes/            # API 路由（messages、files、search、workspaces、config、ai、sync、realtime）
+│   ├── 📁 services/          # 业务逻辑（DBService、MessageService、FileService、WorkspaceService 等）
+│   └── 📁 middleware/        # errorHandler 等中间件
 │
-└── 📁 database/              # 🗄️ 数据库相关
-    └── 📄 schema.sql         # 📋 数据库结构定义
+├── 📁 server/                # 🖥️ 自托管 Node.js 适配器（入口、SQLite、本地存储、静态文件、.env）
+├── 📁 database/              # 🗄️ schema.sql（SQLite 建表脚本）
+├── 📁 tests/                 # ✅ Node 内置测试（npm test）
+└── 📁 scripts/               # 🛠️ 工具脚本（sync-host-timezone.sh）
 ```
 
 </details>
@@ -315,7 +309,7 @@ npm run deploy
 
 **重要：** 应用包含访问鉴权功能，需要配置密码才能正常使用。
 
-📖 **详细配置指南**: [PASSWORD_CONFIG.md](./PASSWORD_CONFIG.md)
+📖 **配置说明**：自托管路径见 [SELFHOST.md](./SELFHOST.md) 与 [.env.example](./.env.example)（`ACCESS_PASSWORD`、`JWT_SECRET`）；仓库不提供单独的 PASSWORD_CONFIG.md。
 
 **快速配置**：
 1. 进入 [Cloudflare Dashboard](https://dash.cloudflare.com/)
@@ -330,6 +324,8 @@ npm run deploy
 ### 🗄️ 数据库初始化
 
 如果遇到 HTTP 500 错误，通常是数据库未正确初始化导致的。请使用以下方法之一初始化数据库：
+
+> 说明：当前代码包含 `workspaces` 表，且服务层的 `ensureSchema()` 会在首次访问时自动建表和补列（自托管路径启动时也会执行 `database/schema.sql`）。下方手动脚本来自早期版本，仅作备用；正常情况下无需手动执行。
 
 <details>
 <summary><strong>📋 方法1：Cloudflare D1 控制台初始化（推荐）</strong></summary>
@@ -476,7 +472,7 @@ bucket_name = "wxchat"
 | 💬 **发送消息** | 输入框输入 → 点击发送 | 支持文本和表情符号 |
 | 📝 **Markdown渲染** | 输入Markdown语法 → 自动渲染 | 支持标题、粗体、列表、代码等 |
 | 🔄 **视图切换** | 点击消息右下角📝按钮 | 在渲染视图和源码视图间切换 |
-| 📁 **上传文件** | 点击📁按钮 或 拖拽文件 | 最大10MB，支持所有格式 |
+| 📁 **上传文件** | 点击📁按钮 或 拖拽文件 | 最大100MB，支持所有格式 |
 | ⬇️ **下载文件** | 点击文件消息中的下载按钮 | 保持原始文件名 |
 | 🔄 **跨设备同步** | 不同设备访问相同URL | 自动同步所有消息和文件 |
 
@@ -653,7 +649,7 @@ navigator.serviceWorker.ready.then(registration => {
 
 #### 📖 详细文档
 
-更多PWA功能说明请参考：[📱 PWA功能使用指南](./docs/PWA_GUIDE.md)
+PWA 支持由 [public/sw.js](./public/sw.js)、[public/manifest.json](./public/manifest.json) 与 `public/js/pwa.js` 实现；仓库不提供单独的 PWA_GUIDE.md。
 
 ## 🔧 API 接口文档
 
@@ -755,20 +751,39 @@ POST /api/clear-all
 #### 📋 表结构
 
 ```sql
+-- 工作区表
+CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    color TEXT,
+    sort_order INTEGER DEFAULT 0,
+    is_default INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 消息表
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT DEFAULT 'default',
     type TEXT NOT NULL CHECK (type IN ('text', 'file')),
     content TEXT,
     file_id INTEGER,
     device_id TEXT NOT NULL,
+    device_info TEXT,          -- 设备信息快照（JSON，可选）
+    status TEXT DEFAULT 'sent' CHECK (status IN ('sending', 'sent', 'failed', 'read')),
+    read_by TEXT DEFAULT '[]', -- 已读设备列表（JSON）
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (file_id) REFERENCES files(id)
 );
 
 -- 文件表
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT DEFAULT 'default',
     original_name TEXT NOT NULL,
     file_name TEXT NOT NULL,
     file_size INTEGER NOT NULL,
@@ -776,28 +791,46 @@ CREATE TABLE files (
     r2_key TEXT NOT NULL UNIQUE,
     upload_device_id TEXT NOT NULL,
     download_count INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 设备表
-CREATE TABLE devices (
+CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY,
+    workspace_id TEXT DEFAULT 'default',
     name TEXT,
     last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+> 以上与 [`database/schema.sql`](./database/schema.sql) 一致（4 张表）。服务层使用惰性 `ensureSchema()` 自动建表和加列；自托管路径启动时也会执行该脚本。
 
 #### 🔗 关系图
 
 ```mermaid
 erDiagram
+    WORKSPACES ||--o{ MESSAGES : scopes
+    WORKSPACES ||--o{ FILES : scopes
+    WORKSPACES ||--o{ DEVICES : scopes
     MESSAGES ||--o{ FILES : contains
     MESSAGES }o--|| DEVICES : sent_by
     FILES }o--|| DEVICES : uploaded_by
 
+    WORKSPACES {
+        string id PK
+        string name
+        string slug UK
+        string color
+        int sort_order
+        int is_default
+    }
+
     MESSAGES {
         int id PK
+        string workspace_id FK
         string type
         string content
         int file_id FK
@@ -807,6 +840,7 @@ erDiagram
 
     FILES {
         int id PK
+        string workspace_id FK
         string original_name
         string file_name
         int file_size
@@ -819,6 +853,7 @@ erDiagram
 
     DEVICES {
         string id PK
+        string workspace_id FK
         string name
         datetime last_active
         datetime created_at
@@ -941,8 +976,8 @@ npm install
 # 本地开发
 npm run dev
 
-# 代码检查
-npm run lint
+# 自动测试
+npm test
 
 # 构建项目
 npm run build
@@ -1011,7 +1046,7 @@ binding = "R2"
 bucket_name = "wxchat"
 ```
 2. 确认R2存储桶已创建：`npx wrangler r2 bucket list`
-3. 检查文件大小是否超过限制（默认10MB）
+3. 检查文件大小是否超过限制（默认 100MB，可用 `MAX_FILE_SIZE_MB` 调整）
 
 </details>
 
@@ -1098,14 +1133,14 @@ cd wxchat
 npm install
 
 # 3️⃣ 配置环境
-cp wrangler.toml.example wrangler.toml
+# 仓库自带 wrangler.toml，直接编辑其中的资源 ID
 # 编辑 wrangler.toml 配置你的资源ID
 
 # 4️⃣ 本地开发
 npm run dev
 
-# 5️⃣ 代码检查
-npm run lint
+# 5️⃣ 自动测试
+npm test
 
 # 6️⃣ 构建项目
 npm run build
