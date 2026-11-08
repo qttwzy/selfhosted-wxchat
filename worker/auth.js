@@ -5,20 +5,21 @@ export { allowsQueryToken, isPublicAuthPath }
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
+const LOGIN_MAX_CLIENTS = 1000
 const loginAttempts = new Map()
 
 function clientKey(c) {
-  const forwarded = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || ''
-  return forwarded.split(',')[0].trim() || 'local'
+  return c.env.CLIENT_IP ||
+    (c.req.raw.cf ? c.req.header('CF-Connecting-IP') : null) ||
+    'local'
 }
 
 function readLoginBucket(key) {
   const now = Date.now()
-  const bucket = loginAttempts.get(key)
-  if (!bucket || now - bucket.startedAt > LOGIN_WINDOW_MS) {
-    return { startedAt: now, count: 0 }
+  for (const [client, bucket] of loginAttempts) {
+    if (now - bucket.startedAt >= LOGIN_WINDOW_MS) loginAttempts.delete(client)
   }
-  return bucket
+  return loginAttempts.get(key) || { startedAt: now, count: 0 }
 }
 
 function rememberFailure(key) {
@@ -127,7 +128,8 @@ authRoutes.post('/login', async (c) => {
   try {
     const key = clientKey(c)
     const bucket = readLoginBucket(key)
-    if (bucket.count >= LOGIN_MAX_ATTEMPTS) {
+    if (bucket.count >= LOGIN_MAX_ATTEMPTS ||
+        (!loginAttempts.has(key) && loginAttempts.size >= LOGIN_MAX_CLIENTS)) {
       return c.json({ success: false, message: '登录尝试次数过多，请稍后再试' }, 429)
     }
 
