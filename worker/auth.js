@@ -1,4 +1,37 @@
 import { Hono } from 'hono'
+import { allowsQueryToken, isPublicAuthPath } from './auth-policy.js'
+
+export { allowsQueryToken, isPublicAuthPath }
+
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const LOGIN_MAX_ATTEMPTS = 5
+const LOGIN_MAX_CLIENTS = 1000
+const loginAttempts = new Map()
+
+function clientKey(c) {
+  return c.env.CLIENT_IP ||
+    (c.req.raw.cf ? c.req.header('CF-Connecting-IP') : null) ||
+    'local'
+}
+
+function readLoginBucket(key) {
+  const now = Date.now()
+  for (const [client, bucket] of loginAttempts) {
+    if (now - bucket.startedAt >= LOGIN_WINDOW_MS) loginAttempts.delete(client)
+  }
+  return loginAttempts.get(key) || { startedAt: now, count: 0 }
+}
+
+function rememberFailure(key) {
+  const bucket = readLoginBucket(key)
+  bucket.count += 1
+  loginAttempts.set(key, bucket)
+  return bucket
+}
+
+function clearFailures(key) {
+  loginAttempts.delete(key)
+}
 
 // 鉴权工具函数
 export const AuthUtils = {
@@ -51,21 +84,16 @@ export const AuthUtils = {
 
 // 鉴权中间件
 export const authMiddleware = async (c, next) => {
-  // 跳过登录和静态资源
   const path = c.req.path
-  if (path.startsWith('/api/auth/') || path.startsWith('/login.html') ||
-      path.includes('.css') || path.includes('.js') || path.includes('.ico') ||
-      path.includes('favicon')) {
+  if (isPublicAuthPath(path)) {
     return next()
   }
 
-  // 获取token - 优先从Authorization头获取，其次从URL参数获取（用于SSE）
   let token = null
   const authHeader = c.req.header('Authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7)
-  } else {
-    // 从URL参数获取token（用于SSE连接）
+  } else if (allowsQueryToken(path)) {
     token = c.req.query('token')
   }
 
@@ -98,21 +126,32 @@ export const authRoutes = new Hono()
 // 登录接口
 authRoutes.post('/login', async (c) => {
   try {
+    const key = clientKey(c)
+    const bucket = readLoginBucket(key)
+    if (bucket.count >= LOGIN_MAX_ATTEMPTS ||
+        (!loginAttempts.has(key) && loginAttempts.size >= LOGIN_MAX_CLIENTS)) {
+      return c.json({ success: false, message: '登录尝试次数过多，请稍后再试' }, 429)
+    }
+
     const { password } = await c.req.json()
 
     if (!password) {
       return c.json({ success: false, message: '密码不能为空' }, 400)
     }
 
-    // 直接验证明文密码（简化配置）
     const expectedPassword = c.env.ACCESS_PASSWORD
 
     if (password !== expectedPassword) {
+      rememberFailure(key)
       return c.json({ success: false, message: '密码错误' }, 401)
     }
 
-    // 生成token
-    const expireHours = parseInt(c.env.SESSION_EXPIRE_HOURS || '24')
+    clearFailures(key)
+
+    const expireHours = Number.parseInt(c.env.SESSION_EXPIRE_HOURS || '24', 10)
+    if (!Number.isFinite(expireHours) || expireHours < 1 || expireHours > 720) {
+      return c.json({ success: false, message: '会话时长配置无效' }, 500)
+    }
     const payload = {
       iat: Date.now(),
       exp: Date.now() + (expireHours * 60 * 60 * 1000),

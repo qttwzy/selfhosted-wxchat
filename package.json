@@ -8,6 +8,7 @@
     "dev": "wrangler dev",
     "selfhost:dev": "node server/index.js",
     "selfhost:start": "NODE_ENV=production node server/index.js",
+    "test": "node --test tests/*.test.js",
     "deploy": "wrangler deploy",
     "build": "node build.js",
     "db:init": "wrangler d1 execute wxchat --file=./database/schema.sql"
@@ -30,5 +31,5 @@
     "static-files"
   ],
   "author": "xiyewuqiu <xiyewuqiu@gmail.com>",
-  "license": "MIT"
+  "license": "CC-BY-NC-SA-4.0"
 }

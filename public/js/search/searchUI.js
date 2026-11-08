@@ -396,7 +396,7 @@ const SearchUI = {
         const statsHTML = `
             <div class="search-results-stats">
                 找到 ${resultCount} 条相关结果 
-                ${this.currentQuery ? `(搜索: "${this.currentQuery}")` : ''}
+                ${this.currentQuery ? `(搜索: "${this.escapeHtml(this.currentQuery)}")` : ''}
             </div>
         `;
 
@@ -463,10 +463,18 @@ const SearchUI = {
 
     // 高亮搜索关键词
     highlightSearchTerms(text, query) {
-        if (!text || !query) return text;
+        if (!text) return '';
+        const safeText = this.escapeHtml(text);
+        if (!query) return safeText;
 
         const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-        return text.replace(regex, `<mark class="${CONFIG.SEARCH.HIGHLIGHT_CLASS}">$1</mark>`);
+        return safeText.replace(regex, `<mark class="${CONFIG.SEARCH.HIGHLIGHT_CLASS}">$1</mark>`);
+    },
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text == null ? '' : String(text);
+        return div.innerHTML;
     },
 
     // 显示建议
@@ -480,9 +488,9 @@ const SearchUI = {
         let suggestionsHTML = '';
         if (this.searchHistory.length > 0) {
             suggestionsHTML = this.searchHistory.slice(0, 10).map(item => `
-                <div class="suggestion-item" data-query="${item}">
+                <div class="suggestion-item" data-query="${this.escapeHtml(item)}">
                     <div class="suggestion-icon">🕒</div>
-                    <div class="suggestion-text">${item}</div>
+                    <div class="suggestion-text">${this.escapeHtml(item)}</div>
                 </div>
             `).join('');
         } else {

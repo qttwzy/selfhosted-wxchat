@@ -1,9 +1,9 @@
 // 微信文件传输助手 Service Worker
 // 提供离线缓存和后台同步功能
 
-const CACHE_NAME = 'wxchat-v2.2.8';
-const STATIC_CACHE_NAME = 'wxchat-static-v2.2.8';
-const DYNAMIC_CACHE_NAME = 'wxchat-dynamic-v2.2.8';
+const CACHE_NAME = 'wxchat-v2.2.9';
+const STATIC_CACHE_NAME = 'wxchat-static-v2.2.9';
+const DYNAMIC_CACHE_NAME = 'wxchat-dynamic-v2.2.9';
 
 // 需要缓存的静态资源
 const STATIC_ASSETS = [
@@ -37,10 +37,17 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js'
 ];
 
-// 需要网络优先的资源（API请求等）
+// 私有 API / 带凭证请求：只走网络，永不写入 CacheStorage
+function isPrivateRequest(request) {
+  const url = new URL(request.url);
+  if (url.pathname.startsWith('/api/')) return true;
+  if (url.searchParams.has('token')) return true;
+  if (request.headers.get('Authorization')) return true;
+  return false;
+}
+
+// 需要网络优先的资源（静态 css/js）
 const NETWORK_FIRST_PATTERNS = [
-  /\/api\//,
-  /\/auth\//,
   /\.(?:css|js)$/
 ];
 
@@ -124,9 +131,12 @@ self.addEventListener('fetch', event => {
 // 处理网络请求的核心逻辑
 async function handleFetch(request) {
   const url = new URL(request.url);
+
+  if (isPrivateRequest(request)) {
+    return fetch(request);
+  }
   
   try {
-    // API 请求：网络优先策略
     if (NETWORK_FIRST_PATTERNS.some(pattern => pattern.test(url.pathname))) {
       return await networkFirst(request);
     }

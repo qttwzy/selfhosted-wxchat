@@ -735,13 +735,21 @@ const Utils = {
             }
 
             try {
-                // 配置marked选项
+                if (typeof marked.use === 'function') {
+                    marked.use({
+                        renderer: {
+                            html() {
+                                return '';
+                            }
+                        }
+                    });
+                }
                 marked.setOptions({
-                    breaks: true,        // 支持换行
-                    gfm: true,          // GitHub风格markdown
-                    sanitize: false,    // 不过度清理HTML
-                    smartLists: true,   // 智能列表
-                    smartypants: false  // 不转换引号
+                    breaks: true,
+                    gfm: true,
+                    sanitize: true,
+                    smartLists: true,
+                    smartypants: false
                 });
 
                 return marked.parse(text);

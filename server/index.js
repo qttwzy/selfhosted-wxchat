@@ -24,8 +24,11 @@ const runtimeExecutionCtx = {
 addStaticFiles(app, path.resolve('public'))
 
 const server = serve({
-  fetch(request) {
-    return app.fetch(request, runtimeEnv, runtimeExecutionCtx)
+  fetch(request, bindings) {
+    return app.fetch(request, {
+      ...runtimeEnv,
+      CLIENT_IP: bindings.incoming.socket.remoteAddress,
+    }, runtimeExecutionCtx)
   },
   hostname: env.HOST,
   port: env.PORT,

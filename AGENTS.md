@@ -181,12 +181,13 @@ bash scripts/sync-host-timezone.sh
 
 ## 测试与质量保证
 
-**无测试套件。** 仓库中未找到测试文件、测试框架或测试脚本。验证方式为手动测试：
+仓库提供 Node 测试脚本（`npm test`）；没有单独的 lint 脚本。验证方式按改动范围组合自动检查与手动测试：
 
 - 自托管：`npm run selfhost:dev` → 打开 `http://localhost:3000`
 - Docker：`docker compose up` → 健康检查 `/login.html`
 - CF Workers：`npm run dev` → wrangler 本地模拟
 - 构建检查：`npm run build` 仅验证文件存在性
+- 自动测试：`npm test`
 
 ## 数据库表结构
 

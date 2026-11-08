@@ -258,7 +258,8 @@ const AIHandler = {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message ai fade-in';
         messageDiv.dataset.messageId = message.id;
-        messageDiv.innerHTML = `<div class="message-content" style="background: #1e90ff; color: white; padding: 12px; border-radius: 8px;"><div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">🤖 AI助手</div><div id="ai-msg-${message.id}">${message.content || '正在处理...'}</div></div><div class="message-meta"><span>AI助手</span> <span class="message-time">${new Date().toLocaleTimeString()}</span></div>`;
+        const safeContent = Utils.escapeHtml(message.content || '正在处理...');
+        messageDiv.innerHTML = `<div class="message-content" style="background: #1e90ff; color: white; padding: 12px; border-radius: 8px;"><div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">🤖 AI助手</div><div id="ai-msg-${Utils.escapeHtml(String(message.id))}">${safeContent}</div></div><div class="message-meta"><span>AI助手</span> <span class="message-time">${new Date().toLocaleTimeString()}</span></div>`;
 
         messageList.appendChild(messageDiv);
         messageList.scrollTop = messageList.scrollHeight;

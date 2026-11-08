@@ -15,8 +15,12 @@ browser / PWA
 ```bash
 npm install
 cp .env.example .env
+openssl rand -base64 24   # 写入 ACCESS_PASSWORD
+openssl rand -base64 32   # 写入 JWT_SECRET
 npm run selfhost:dev
 ```
+
+Node 直跑默认只绑定 `127.0.0.1`。只有在 `.env` 里显式设置 `HOST=0.0.0.0` 才会监听所有网卡；不要对不受信网络这么做。模板不含可登录的示例密码或 JWT。缺少或使用弱/示例凭据时进程会拒绝启动。
 
 默认访问：
 
@@ -36,10 +40,12 @@ openssl rand -base64 32
 然后编辑 `.env`，至少修改：
 
 ```env
-ACCESS_PASSWORD=wxchat2024
+ACCESS_PASSWORD=
 JWT_SECRET=
 PUBLIC_BASE_URL=
 ```
+
+`ACCESS_PASSWORD` 和 `JWT_SECRET` 必须是你自己生成的值，不能留空，也不能用文档或模板里出现过的示例串。
 
 让 Docker 容器使用宿主机时区：
 
@@ -60,6 +66,9 @@ Compose 默认只绑定 loopback：
 ```text
 127.0.0.1:18091 -> container:3000
 ```
+
+Compose 将容器内的 `HOST` 固定为 `0.0.0.0`，以接收宿主端口转发；宿主发布端口仍只监听回环地址。
+自托管登录限流按实际 TCP 对端计数，不信任请求中的代理 IP 头；反向代理后的客户端共享该代理对端的限流额度。
 
 数据位置：
 
