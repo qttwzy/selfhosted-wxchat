@@ -30,15 +30,16 @@ test('self-hosted clients cannot reset their limit with proxy headers', async ()
   assert.equal((await failedLogin(app, 'peer-two')).status, 401)
 })
 
-test('login buckets have a fixed bound and expire for inactive peers', async (t) => {
+test('login buckets have a fixed bound and allow new peers after eviction', async (t) => {
   const app = await authApp('expiry')
   const now = Date.now()
   t.mock.method(Date, 'now', () => now)
   for (let i = 0; i < 1000; i++) {
     assert.equal((await failedLogin(app, `peer-${i}`)).status, 401)
   }
-  assert.equal((await failedLogin(app, 'overflow-peer')).status, 429)
+  assert.equal((await failedLogin(app, 'overflow-peer')).status, 401)
+  assert.equal((await failedLogin(app, 'peer-0')).status, 401)
   t.mock.method(Date, 'now', () => now + 15 * 60 * 1000)
   assert.equal((await failedLogin(app, 'new-peer')).status, 401)
-  assert.equal((await failedLogin(app, 'peer-0')).status, 401)
+  assert.equal((await failedLogin(app, 'overflow-peer')).status, 401)
 })

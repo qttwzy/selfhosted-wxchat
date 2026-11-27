@@ -40,7 +40,7 @@
 
 ### 前端
 
-原生 JS SPA + PWA（无框架、无打包工具）。25+ 模块通过顺序 `<script>` 标签加载，使用 `?v=2.2.8` 缓存清除。全局单例对象（`CONFIG`、`API`、`Auth`、`UI`、`MessageHandler`、`RealtimeManager`、`WorkspaceManager`）。跨模块通信通过自定义 DOM 事件。状态存储在 `window.*` 全局变量中。
+原生 JS SPA + PWA（无框架、无打包工具）。25+ 模块通过顺序 `<script>` 标签加载，使用 `?v=2.2.9` 缓存清除。全局单例对象（`CONFIG`、`API`、`Auth`、`UI`、`MessageHandler`、`RealtimeManager`、`WorkspaceManager`）。跨模块通信通过自定义 DOM 事件。状态存储在 `window.*` 全局变量中。
 
 ## 关键目录
 

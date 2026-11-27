@@ -1,5 +1,7 @@
 // 工具函数库
 
+let markedHtmlRendererRegistered = false;
+
 const Utils = {
     activeInputDialog: null,
 
@@ -735,7 +737,7 @@ const Utils = {
             }
 
             try {
-                if (typeof marked.use === 'function') {
+                if (!markedHtmlRendererRegistered && typeof marked.use === 'function') {
                     marked.use({
                         renderer: {
                             html() {
@@ -743,6 +745,7 @@ const Utils = {
                             }
                         }
                     });
+                    markedHtmlRendererRegistered = true;
                 }
                 marked.setOptions({
                     breaks: true,
