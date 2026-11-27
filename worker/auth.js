@@ -26,6 +26,9 @@ function rememberFailure(key) {
   const bucket = readLoginBucket(key)
   bucket.count += 1
   loginAttempts.set(key, bucket)
+  while (loginAttempts.size > LOGIN_MAX_CLIENTS) {
+    loginAttempts.delete(loginAttempts.keys().next().value)
+  }
   return bucket
 }
 
@@ -128,8 +131,7 @@ authRoutes.post('/login', async (c) => {
   try {
     const key = clientKey(c)
     const bucket = readLoginBucket(key)
-    if (bucket.count >= LOGIN_MAX_ATTEMPTS ||
-        (!loginAttempts.has(key) && loginAttempts.size >= LOGIN_MAX_CLIENTS)) {
+    if (bucket.count >= LOGIN_MAX_ATTEMPTS) {
       return c.json({ success: false, message: '登录尝试次数过多，请稍后再试' }, 429)
     }
 
